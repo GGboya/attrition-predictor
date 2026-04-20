@@ -1,0 +1,139 @@
+<mxfile host="app.diagrams.net" modified="2026-04-19T00:00:00.000Z" agent="attrition-predictor" version="22.1.0" type="device">
+  <diagram id="attrition-flow" name="模型架构与预测流程">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1280" pageHeight="1720" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="员工离职预测 — 算法架构与预测流程&#xa;（与 src/main.py 一致）" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontStyle=1;fontColor=#1a1a1a;" vertex="1" parent="1">
+          <mxGeometry x="120" y="20" width="1040" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d1" value="① 数据加载&#xa;Excel：处理之后的离职数据-5000.xlsx&#xa;标签：离职行为 (0/1)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="440" y="85" width="400" height="75" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d2" value="② 特征工程&#xa;原始 13 维 + 构造 7 维（交互项、差值、比值等）&#xa;→ 约 20 维特征矩阵 X" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="440" y="180" width="400" height="75" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d3" value="③ 划分数据集&#xa;train_test_split：80% 训练 / 20% 测试&#xa;stratify=离职行为，random_state=42" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="440" y="275" width="400" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d4" value="训练集 X_train, y_train&#xa;（用于调参、训练、阈值与集成）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="200" y="380" width="280" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d5" value="测试集 X_test, y_test&#xa;（仅用于最终指标与作图，不参与调参）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="800" y="380" width="280" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d6" value="④ Optuna 超参搜索&#xa;StratifiedKFold 5 折 + 每折内 SMOTE&#xa;评分：0.6×F1(离职) + 0.4×AUC&#xa;XGB 100 trials / LGB 100 / CatBoost 50" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="120" y="480" width="440" height="95" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d7" value="⑤ 固定最优超参后&#xa;对全训练集 SMOTE → 训练三个最终基模型&#xa;CatBoost 指定类别特征列（性别、地区等）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="120" y="600" width="440" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="m1" value="XGBoost" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="120" y="710" width="130" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="m2" value="LightGBM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="275" y="710" width="130" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="m3" value="CatBoost" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="430" y="710" width="130" height="45" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d8" value="⑥ 训练集上 5 折 OOF 概率&#xa;→ 按 F1(离职) 选各模型最优阈值（非固定 0.5）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="120" y="785" width="440" height="65" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d9" value="⑦ 集成&#xa;Voting：三模型 P(离职) 算术平均&#xa;Stacking：三维概率 → LogisticRegression 元学习器" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="120" y="875" width="440" height="75" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d10" value="⑧ 预测（测试或线上新样本）&#xa;同套特征工程 → 输入三模型 → 得 p_xgb, p_lgb, p_cat&#xa;→ Voting/Stacking 得最终 P(离职)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="620" y="600" width="540" height="75" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d11" value="⑨ 二分类决策&#xa;若 P ≥ 阈值 τ（Voting/Stacking 各有对应 τ）→ 预测「离职」；否则「不离职」" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="620" y="700" width="540" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d12" value="⑩ 评估与解释（离线）&#xa;测试集：Accuracy / Precision / Recall / F1 / AUC；ROC/PR、混淆矩阵&#xa;特征重要性；XGBoost + SHAP 摘要" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;align=left;" vertex="1" parent="1">
+          <mxGeometry x="620" y="785" width="540" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="note" value="提示：展示时可隐藏 Optuna  trial 次数等细节，突出「数据→特征→划分→三模型→集成→阈值→标签」主路径。" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;fillColor=#ffffc0;strokeColor=#ff9900;fontSize=11;align=left;size=14;" vertex="1" parent="1">
+          <mxGeometry x="120" y="990" width="1040" height="55" as="geometry"/>
+        </mxCell>
+
+        <!-- Edges main flow -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d1" target="d2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d2" target="d3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d3" target="d4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;strokeColor=#b85450;" edge="1" parent="1" source="d3" target="d5">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d4" target="d6">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d6" target="d7">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.2;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d7" target="m1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d7" target="m2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.8;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d7" target="m3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="m1" target="d8">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="m2" target="d8">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8c" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="m3" target="d8">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d8" target="d9">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;dashed=1;strokeColor=#666666;" edge="1" parent="1" source="d7" target="d10">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10b" value="集成权重/元学习器已定" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;dashed=1;strokeColor=#6c8ebf;fontSize=10;" edge="1" parent="1" source="d9" target="d10">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d10" target="d11">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=2;endArrow=classic;" edge="1" parent="1" source="d11" target="d12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeWidth=1;endArrow=classic;dashed=1;strokeColor=#b85450;" edge="1" parent="1" source="d5" target="d10">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1120" y="410"/>
+              <mxPoint x="1120" y="560"/>
+              <mxPoint x="890" y="560"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
