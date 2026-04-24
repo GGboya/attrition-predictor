@@ -1,2 +1,8 @@
 # 本地数据集与相关材料（xlsx / docx / pdf 等），勿提交远程
 data/
+
+# 训练/运行时临时工件
+catboost_info/
+logs_*.txt
+**/__pycache__/
+*.pyc
