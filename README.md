@@ -1,56 +1,12 @@
 # 离职预测（Attrition Predictor）
 
-基于问卷与行为数据对 **离职行为**（二分类：0 = 未离职，1 = 离职）建模。以 **AUC** 为主指标 —— 它是阈值无关、对类别不平衡稳健的排序能力度量，适合直接跨设置对比。参考基线为 Liu et al. 2024 的 BORF（AUC 0.69）。
+基于问卷与行为数据对 **离职行为**（二分类：0 = 未离职，1 = 离职）建模，并在此之上叠加 **HR 反事实解释** 与 **噪声鲁棒堆叠**。主指标是 **AUC**（阈值无关、对类别不平衡稳健），参考基线为 Liu et al. 2024 的 BORF（AUC 0.69）。
 
-主流程见 `src/main.py` 与 `src/attrition_prediction.ipynb`。
-
----
-
-## 结果速览
-
-**主线结果**（测试集，同一 `random_state=42` 分层 80/20 划分，同一特征集；测试集正类率 **0.168**，即 PR-AUC 的随机基线）。AUC / PR-AUC 的 95% CI 来自 1000 次自助重采样。F1(R)、Bal.Acc 均使用在**训练集 CV out-of-fold 概率**上按 F1 选出的阈值，阈值对所有模型一视同仁（基线与我们的模型同口径）。
-
-| 组别 | 模型 | AUC [95% CI] | PR-AUC [95% CI] | Brier | MCC | Bal.Acc | F1(R) |
-|------|------|---:|---:|---:|---:|---:|---:|
-| **我们（Optuna 调参 + 集成）** | **Voting** | **0.732 [0.692, 0.769]** | **0.347 [0.288, 0.423]** | 0.196 | 0.257 | 0.663 | 0.404 |
-| | Stacking | 0.732 [0.692, 0.768] | 0.346 [0.288, 0.423] | 0.127 | 0.251 | 0.660 | 0.400 |
-| | LightGBM | 0.732 [0.693, 0.768] | 0.342 [0.283, 0.418] | 0.201 | 0.269 | 0.671 | 0.413 |
-| | CatBoost | 0.728 [0.687, 0.765] | 0.346 [0.283, 0.423] | 0.196 | 0.247 | 0.654 | 0.397 |
-| | XGBoost | 0.728 [0.687, 0.766] | 0.347 [0.285, 0.424] | 0.193 | 0.262 | 0.667 | 0.408 |
-| **同仓库 sklearn baseline**（默认参数 + `class_weight='balanced'`） | SVM (RBF) | 0.717 [0.675, 0.759] | 0.336 [0.276, 0.414] | 0.127 | 0.248 | 0.662 | 0.397 |
-| | Logistic Regression | 0.711 [0.672, 0.749] | 0.325 [0.270, 0.390] | 0.214 | 0.251 | 0.666 | 0.397 |
-| | Random Forest | 0.710 [0.670, 0.750] | 0.328 [0.267, 0.399] | 0.129 | 0.218 | 0.641 | 0.378 |
-| | MLP (64-32) | 0.700 [0.655, 0.741] | 0.300 [0.250, 0.360] | 0.130 | 0.234 | 0.652 | 0.388 |
-| | KNN (k=15) | 0.673 [0.633, 0.715] | 0.276 [0.224, 0.334] | 0.134 | 0.196 | 0.627 | 0.363 |
-| | Gaussian NB | 0.662 [0.620, 0.704] | 0.274 [0.224, 0.336] | 0.199 | 0.157 | 0.604 | 0.339 |
-| | Decision Tree | 0.537 [0.502, 0.571] | 0.182 [0.152, 0.214] | 0.253 | 0.075 | 0.537 | 0.226 |
-| **参考论文**（不同数据集，仅 AUC 可比） | BORF (Liu et al. 2024) | 0.690 | — | — | — | — | — |
-| | LR / RF / SVM / CNN | 0.64 / 0.59 / 0.63 / 0.62 | — | — | — | — | — |
-
-**显著性检验（DeLong 双侧检验，我们的 Voting 对每个 sklearn baseline，同一测试集配对）**
-
-| Baseline | Δ AUC | z | p | 显著性 |
-|---|---:|---:|---:|:-:|
-| SVM (RBF) | +0.014 | 1.38 | 0.167 | n.s. |
-| Logistic Regression | +0.021 | 1.87 | 0.062 | n.s. |
-| Random Forest | +0.022 | 2.04 | 0.042 | * |
-| MLP | +0.032 | 2.17 | 0.030 | * |
-| KNN | +0.058 | 3.49 | 4.8e-4 | *** |
-| Gaussian NB | +0.070 | 3.89 | 1.0e-4 | *** |
-| Decision Tree | +0.195 | 8.79 | <1e-16 | *** |
-
-**要点**
-- 最佳模型 (Voting) 测试 AUC **0.732 [0.692, 0.769]**，相对 BORF 论文 (0.690) 多 **+0.042**。
-- 相对最强同仓 baseline（SVM RBF，AUC 0.717）多 **+0.014**；**DeLong 检验 p = 0.167，未达 α = 0.05 显著**。相对 LR 的差异处于边际显著（p = 0.062）。即：在这份 5000 样本上，**调参 + 集成的增益相比一个认真配置的线性/核方法 baseline 是有限的**，这与数据本身的信号上限一致（详见方法论第 1 条）。相对 RF/MLP 及以下模型，差异达到显著或高度显著。
-- PR-AUC 0.347（随机基线 0.168），在 ≈5:1 不平衡下体现了**对正类排序能力的实际提升约 2 倍**；Brier = 0.196 / 0.127 表明集成模型概率输出的可用性。
-- 同一数据下，sklearn 默认的 LR / RF / SVM (class-balanced) 已经**超过论文报告的同名 baseline**，主要增益来自**干净的评估协议**（严格 80/20 分层 + CV-阈值）与**类别权重**，而不是复杂建模。
-- 可解释性：每样本 SHAP 归因 + 三基学习器原生重要性交叉对照（见下文图表）。
-
-方法关键词：**原始分布训练（不做合成过采样）**、类别权重处理不平衡、XGBoost / LightGBM / CatBoost 三基学习器 + 贝叶斯调参 + Voting/Stacking 集成、SHAP 全量解释、与 sklearn 标准库 baseline 同数据对比、**自助法 95% CI + DeLong 配对显著性检验**。
+所有结果产物由 `src/` 下分阶段脚本生成，写入 `src/figures/`、`src/tables/`、`models/`。
 
 ---
 
-## 数据集
+## 数据
 
 | 项目 | 说明 |
 |------|------|
@@ -63,82 +19,70 @@
 
 ---
 
-## 建模结果图表（运行 `src/main.py` 后生成）
+## Pipeline 概览
 
-下列图片由脚本保存于 `src/`，便于在 README 中直接展示（若本地尚未运行，请先执行脚本生成）。
+六个阶段，顺序执行。每个阶段只读前一阶段的产物，产出落在 `src/tables/` 与 `src/figures/`；训练好的模型落在 `models/`。
 
-### ROC / Precision-Recall
+| Phase | 脚本 | 目的 | 关键产物 |
+|---|---|---|---|
+| **0** 数据治理 | `00_prepare_dataset.py` | 14 条 pre-registered 过滤规则 (F1–F14) 清洗 5771→5469 样本，冻结 80/20 分层划分 | `data/processed/clean.csv`、`data/processed/{train,test}_idx.npy`、`tables/table1_sample_flow.csv` |
+| **1** MT-MLP 基线 | `01a_mt_model.py`（模型）<br>`01b_mt_train.py`（训练） | 共享编码器 + 二分类头 + 序数意向头（CORN），在冻结划分上对比 单任务 MLP / 三树 / Voting | `models/mt_mlp_calibrated.pkl`、`tables/table4_base_classifier.csv`、`figures/fig2_base_roc_pr.png` |
+| **2** HR 反事实 | `02a_hrcf_algo.py`（算法）<br>`02b_hrcf_run.py`（评估）<br>`02c_cost_rank.py`（成本排序） | 对高风险离职者生成硬约束反事实，对比 DiCE 软约束基线；再按 HR 成本 / Δp 排序，产出干预菜单 + Pareto 前沿 | `tables/table5b_hrcf_vs_dice.csv`、`tables/table5c_*.csv`、`figures/fig3a_hrcf_radar.png`、`figures/fig3b_cf_cases.png`、`figures/fig3c_pareto.png` |
+| **3** ICM-Net | `03a_icmnet_model.py`（模型）<br>`03b_icmnet_train.py`（训练） | 三阶段训练的意向→行为级联网络 + Mixup + 对称交叉熵；完整 baseline panel 与消融；DeLong 显著性对照 | `models/icmnet_calibrated.pkl`、`tables/table7_*.csv`、`figures/fig7_icmnet_roc.png` |
+| **4** 噪声鲁棒 | `04a_nrboost.py`（NR-Boost，GCE + self-paced 重加权）<br>`04b_nrforest.py`（NR-Forest，OOB-loss 加权） | 在 ICM-Net 之外的两条噪声鲁棒路线，再次与 RF/XGB/ICM-Net 对照 | `tables/table8_*.csv`、`tables/table9_nrforest_*.csv`、`figures/fig8_nrboost_roc.png`、`figures/fig9_nrforest_roc.png` |
+| **5** Stacking | `05_stacking.py`（当前正式版）<br>`05_legacy_stack_v1.py`、`05_legacy_stack_v2.py`（archive） | 种子平均 MT-MLP + ExtraTrees 加入的 5-base 堆叠，L2-logistic / 凸组合两种 meta | `tables/table9c_stack_v3_*.csv`、`figures/fig9c_stack_v3_roc.png` |
 
-整体区分能力（AUC）与不平衡下的精确率–召回权衡。
+**关于 legacy stack v1/v2**：v1 的 4 个基全为树（OOF 相关≥0.86）→ 堆叠退化为 RF；v2 加入 MT-MLP + SVM-RBF 引入正交信号；v3（= 当前 `05_stacking.py`）在 v2 基础上做种子平均 + 第五个基。两个 legacy 脚本保留以便复现早期结论，产物命名仍带 `9`/`9b` 前缀。
 
-![ROC 与 PR 曲线](src/roc_pr_curves.png)
-
-### 混淆矩阵（示例：XGBoost / Voting / Stacking）
-
-不同集成方式在选定阈值下的分类结果对比。
-
-![混淆矩阵](src/confusion_matrices.png)
-
-### 特征重要性（三基学习器）
-
-![特征重要性](src/feature_importance.png)
-
-### SHAP 摘要（以 XGBoost 为例）
-
-![SHAP 摘要](src/shap_summary.png)
+> 注：`src/figures/` 和 `src/tables/` 下的文件名保留了论文草稿 Table/Figure 编号（table1/4/5/7/8/9、fig2/3/7/8/9），与 Phase 编号不一一对应。
 
 ---
 
-## 仓库结构
+## 运行
 
+```bash
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+cd src
+
+python 00_prepare_dataset.py   # data cleanup + frozen split
+python 01b_mt_train.py         # MT-MLP + base learners   (→ models/mt_mlp_calibrated.pkl)
+python 02b_hrcf_run.py         # HR-CF vs DiCE
+python 02c_cost_rank.py        # intervention menu
+python 03b_icmnet_train.py     # ICM-Net                  (→ models/icmnet_calibrated.pkl)
+python 04a_nrboost.py          # NR-Boost
+python 04b_nrforest.py         # NR-Forest
+python 05_stacking.py          # production stacking
 ```
-attrition-predictor/
-├── README.md
-├── docs/
-│   ├── attrition_model_architecture.drawio   # 模型流程（draw.io）
-│   ├── variable-labels.md                    # 变量与取值说明
-│   └── …
-├── data/                                     # 数据（gitignore，不提交）
-├── src/
-│   ├── main.py                               # 主训练与评估脚本
-│   ├── attrition_prediction.ipynb
-│   └── *.png                                 # 运行 main 后输出的图表
-└── …
-```
+
+`01a_mt_model.py`、`02a_hrcf_algo.py`、`03a_icmnet_model.py` 是模型/算法定义模块，不单独跑；它们会被同 Phase 的 `*b` / `*c` 脚本动态加载（`importlib.util`）。
 
 ---
 
 ## 方法论
 
-1. **指标选择：AUC 为主，并报告不确定性与显著性**  
-   AUC 是**阈值无关**、对类别不平衡稳健、在不同采样策略间可比的度量，是少数类问题中最稳的排序能力指标；同时报告 **PR-AUC**（不平衡下更能体现少数类排序价值，随机基线就是正类率 0.168）、**Brier**（概率校准）、**MCC**（全四格均衡利用）。每个 AUC / PR-AUC 带 **1000 次自助法 95% CI**；我们最佳模型与每个 baseline 做 **DeLong 双侧检验**，明确报告哪些差距达到 α = 0.05 显著、哪些未达。`bal_acc / F1` 在本仓库统一使用在**训练集 CV out-of-fold 概率**上按 F1 选出的阈值，基线与我们的模型同口径，避免"自家模型调阈值、baseline 用 0.5"的不对称。
+1. **指标选择：AUC 为主，并报告不确定性与显著性**
+   AUC 是**阈值无关**、对类别不平衡稳健、在不同采样策略间可比的度量，是少数类问题中最稳的排序能力指标；同时报告 **PR-AUC**（不平衡下更能体现少数类排序价值，随机基线就是正类率 ≈0.17）、**Brier**（概率校准）、**MCC**（全四格均衡利用）。每个 AUC / PR-AUC 带 **1000 次自助法 95% CI**；关键模型间做 **DeLong 双侧检验**（`src/_utils.py::delong_test`），明确报告哪些差距达到 α = 0.05 显著、哪些未达。`bal_acc / F1` 在本仓库统一使用在**训练集 CV out-of-fold 概率**上按 F1 选出的阈值，所有模型同口径。
 
-2. **类别不平衡：原始分布 + 类别权重**  
-   采用 `scale_pos_weight`（XGBoost）、`is_unbalance=True`（LightGBM）、`auto_class_weights='Balanced'`（CatBoost）的内置权重方案。**不做 SMOTE / CTGAN 等合成过采样**，避免合成样本污染测试集或在整数编码的类别上产生不真实组合，评估始终在原始分布上进行。
+2. **类别不平衡：原始分布 + 类别权重**
+   采用 `scale_pos_weight`（XGBoost）、`is_unbalance=True`（LightGBM）、`auto_class_weights='Balanced'`（CatBoost）、`class_weight='balanced'`（sklearn）的内置权重方案。**不做 SMOTE / CTGAN 等合成过采样**，避免合成样本污染评估或在整数编码类别上产生不真实组合，评估始终在原始分布上进行。
 
-3. **阈值**  
-   仅在**训练集的 CV out-of-fold 概率**上按 F1 选阈值（避免测试泄漏），在测试集复用。模型对外输出的是校准前概率，若部署时有成本函数，可单独调整阈值。
+3. **阈值**
+   仅在**训练集的 CV out-of-fold 概率**上按 F1 选阈值（避免测试泄漏），在测试集复用。模型对外输出的是 isotonic 校准后概率。
 
-4. **可解释性**  
-   对最佳 XGBoost 做**完整 SHAP 归因**（`src/shap_summary.png`），并与三基学习器原生重要性（`src/feature_importance.png`）交叉对照；第 8 节打印"我们 SHAP 排名 vs 参考论文排名"的表，便于读者对比。
+4. **反事实解释（Phase 2）**
+   HR-CF 在梯度每一步做硬约束投影（不可变列保留、单向列只改变允许方向），生成的反事实总是可执行的；soft-CF / DiCE 基线靠 L1 惩罚施加"软约束"，会产出违约但更近的点。5 维对比：actionability、sparsity、proximity、plausibility、diversity。
 
-5. **可复现**  
-   所有随机性都固定在 `RANDOM_STATE=42`（`train_test_split` 分层 20%、Optuna study、3 个模型的 `random_state`）。Optuna 默认 30/30/20 trials + MedianPruner，整条流水线在 ~3.5 分钟内跑完。
+5. **噪声鲁棒（Phase 4）**
+   - NR-Boost：自定义 XGBoost 损失为 Generalized Cross-Entropy（Zhang & Sabuncu 2018），再叠 self-paced 对难样本降权。
+   - NR-Forest：两阶段 RF，用 OOB GCE 损失按类归一化得样本权重，第二阶段按权重训练后与第一阶段按 `blend` 融合。
 
----
-
-## 参考与基线
-
-- `src/main.py` 顶部 `PAPER_AUC` 记录了 Liu et al. 2024 Table 3 中 LR/RF/SVM/CNN/BORF 的已公开 AUC。
-- 更完整的文献与变量说明见 `docs/` 下材料。
+6. **可复现**
+   所有随机性固定在 `RANDOM_STATE = 42`。冻结划分 `data/processed/{train,test}_idx.npy` 由 Phase 0 一次性产出，所有后续阶段共享。
 
 ---
 
-## 快速运行（需本地已有 `data/` 下 Excel）
+## 参考
 
-```bash
-pip install -r requirements.txt
-cd src && python main.py
-```
-
-依赖见项目根目录 **`requirements.txt`**。
+- Liu et al. 2024, **BORF**：参考 AUC 0.69。`docs/research-paper-2024-borf-turnover-data.md` 给出完整背景。
+- 变量与取值：`docs/variable-labels.md`。
