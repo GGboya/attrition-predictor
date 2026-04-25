@@ -21,7 +21,11 @@ plt.rcParams.update({
     "font.family": "DejaVu Sans",
     "font.size": 9,
     "axes.unicode_minus": False,
+    "pdf.fonttype": 42,       # TrueType, not Type-3 (journal requirement)
+    "ps.fonttype": 42,
+    "svg.fonttype": "none",
 })
+DPI = 300                      # journal raster requirement
 
 # ---------- palette ----------
 C_BG = "#F7F9FC"
@@ -344,51 +348,114 @@ def draw_zscore_box(ax, x, y, w, h):
 
 
 def draw_base_ensemble(ax, x, y, w, h, probs):
-    """5 base learners stacked vertically; each emits a probability circle at right."""
+    """5 base learners stacked vertically.
+
+    Within each panel: name + hyperparams centered along top,
+    icon centered in the lower half. Probability circle sits
+    OUTSIDE the panel on the right so there is no text/icon overlap.
+    Returns list of (cx, cy) of the 5 output probability circles.
+    """
     learners = [
-        ("RF",        "n_est=400, max_depth=10, CL-w ✓",  icon_rf,  probs[0], "p_RF"),
-        ("NR-Boost",  "XGB + GCE q=0.7, 2-stage SP, CL-w ✓", icon_nrb, probs[1], "p_NRB"),
-        ("MT-MLP",    "[41→64→32]+bin/ord, λ=0.7, seed×5", icon_mlp, probs[2], "p_MT"),
-        ("SVM",       "RBF, C=1, γ=scale, CL-w ✓",         icon_svm, probs[3], "p_SVM"),
-        ("ExtraTrees","n_est=400, max_depth=12, CL-w ✓",  icon_et,  probs[4], "p_ET"),
+        ("Random Forest", "n_est=400, max_depth=10  ·  CL-w",
+         icon_rf,  probs[0], "p_{RF}"),
+        ("NR-Boost",      "XGB + GCE q=0.7  ·  2-stage SP  ·  CL-w",
+         icon_nrb, probs[1], "p_{NRB}"),
+        ("MT-MLP",        "[41→64→32] + bin/ord heads  ·  λ=0.7  ·  seed×5",
+         icon_mlp, probs[2], "p_{MT}"),
+        ("SVM-RBF",       "C=1, γ=scale  ·  CL-w",
+         icon_svm, probs[3], "p_{SVM}"),
+        ("Extra Trees",   "n_est=400, max_depth=12  ·  CL-w",
+         icon_et,  probs[4], "p_{ET}"),
     ]
     # section label
-    ax.text(x + w/2, y + h + 0.15, "5 Base Learners (parallel)",
-            ha="center", va="bottom", fontsize=10, weight="bold", color=C_EDGE)
+    ax.text(x + w/2 - 0.4, y + h + 0.15, "5 Base Learners (parallel)",
+            ha="center", va="bottom", fontsize=10.5, weight="bold", color=C_EDGE)
+    ax.text(x + w/2 - 0.4, y - 0.15, "CL-w = trained with Cleanlab-v6 sample weights",
+            ha="center", va="top", fontsize=7, style="italic", color="#888")
+
     box_h = h / 5
     centers = []
+    panel_right_pad = 0.85              # room reserved for p-circle outside panel
+    bx_inner = x + 0.05
+    bw_inner = w - panel_right_pad
     for i, (name, hp, icon_fn, p, plab) in enumerate(learners):
         by = y + h - (i + 1) * box_h
-        bx_inner = x + 0.05
-        bw_inner = w - 0.9
         rbox(ax, bx_inner, by + 0.08, bw_inner, box_h - 0.16, fc="#FDFEFF")
-        # name + hp
-        ax.text(bx_inner + 0.12, by + box_h - 0.18, name,
-                ha="left", va="top", fontsize=10, weight="bold", color=C_PRIM)
-        ax.text(bx_inner + 0.12, by + box_h - 0.50, hp,
-                ha="left", va="top", fontsize=6.5, style="italic", color="#666")
-        # icon
-        icon_cx = bx_inner + bw_inner - 0.85
-        icon_cy = by + box_h / 2 - 0.05
-        icon_fn(ax, icon_cx, icon_cy, w=1.4, h=box_h - 0.35)
-        # prob circle
-        cx = x + w - 0.35
+        # name — centered, top
+        ax.text(bx_inner + bw_inner/2, by + box_h - 0.20, name,
+                ha="center", va="top", fontsize=10, weight="bold", color=C_PRIM)
+        # hp — centered, just below name, small font
+        ax.text(bx_inner + bw_inner/2, by + box_h - 0.48, hp,
+                ha="center", va="top", fontsize=6.5,
+                style="italic", color="#666")
+        # icon — centered in lower 55% of panel, no x-axis conflict with text
+        icon_cx = bx_inner + bw_inner/2
+        icon_cy = by + (box_h - 0.70) / 2 + 0.08   # bottom zone
+        icon_fn(ax, icon_cx, icon_cy,
+                w=bw_inner * 0.55,
+                h=box_h - 0.95)
+        # output probability circle — sits OUTSIDE right edge of panel
+        cx = x + w - 0.30
         cy = by + box_h / 2
-        ax.add_patch(Circle((cx, cy), 0.26, fc=C_PRIM, ec=C_EDGE, lw=1.2, alpha=0.88))
-        ax.text(cx, cy + 0.03, f"{p:.2f}",
-                ha="center", va="center", fontsize=8.5, color="white", weight="bold")
-        ax.text(cx, cy - 0.42, f"${plab}$",
-                ha="center", va="top", fontsize=7.5, color=C_EDGE)
+        ax.add_patch(Circle((cx, cy), 0.28,
+                            fc=C_PRIM, ec=C_EDGE, lw=1.3, alpha=0.90))
+        ax.text(cx, cy + 0.02, f"{p:.2f}",
+                ha="center", va="center", fontsize=9, color="white", weight="bold")
+        ax.text(cx, cy - 0.48, f"${plab}$",
+                ha="center", va="top", fontsize=8, color=C_EDGE)
         centers.append((cx, cy))
-    return centers  # return (x,y) of the 5 p-circles for downstream routing
+    return centers
 
 
-def draw_meta_lr_box(ax, x, y, w, h):
-    """L2-LR meta: self-contained weighted-sum visualization.
+def draw_meta_sigma(ax, cx, cy, p_centers, p_tilde):
+    """Minimal meta visualization: 5 weighted arrows from p-circles into σ.
 
-    Reads stack vector p from left edge, shows 5 sub-nodes with weighted
-    edges to central sigma node, emits p_tilde to right edge.
+    The 5 p-circles already drawn by draw_base_ensemble serve as the
+    stacking vector; no duplicate sub-nodes or stack column.
+    Returns (right_x, cy) of the σ node so caller can continue the spine.
     """
+    keys = ["RF", "NRB", "MT", "SVM", "ET"]
+    betas = [BETA[k] for k in keys]
+    # draw weighted edges first (so σ sits on top)
+    for (src_x, src_y), bk in zip(p_centers, betas):
+        color = C_ACC if bk < 0 else C_PRIM
+        lw = 0.7 + 4.0 * abs(bk)
+        a = FancyArrowPatch((src_x + 0.30, src_y), (cx - 0.38, cy),
+                            arrowstyle="->", mutation_scale=11,
+                            color=color, lw=lw, alpha=0.85, zorder=2)
+        ax.add_patch(a)
+        # β label on edge — positioned 40% toward σ node
+        lx = src_x + 0.30 + 0.42 * (cx - 0.38 - src_x - 0.30)
+        ly = src_y + 0.42 * (cy - src_y)
+        ax.text(lx, ly + 0.10, f"{bk:+.3f}",
+                ha="center", va="bottom", fontsize=7.2,
+                color=color, weight="bold", zorder=4,
+                bbox=dict(boxstyle="round,pad=0.14",
+                          fc="white", ec=color, lw=0.7, alpha=0.95))
+    # σ node
+    ax.add_patch(Circle((cx, cy), 0.38,
+                        fc="#F9E79F", ec=C_EDGE, lw=1.6, zorder=5))
+    ax.text(cx, cy + 0.03, r"$\sigma$",
+            ha="center", va="center", fontsize=18, zorder=6)
+    # labels around σ
+    ax.text(cx, cy + 0.55, "L2-LR meta",
+            ha="center", va="bottom", fontsize=9.5, weight="bold", color=C_EDGE)
+    ax.text(cx, cy - 0.55,
+            r"$\tilde p=\sigma\!\left(\sum_k \beta_k\,\mathrm{logit}(p_k)+b\right)$",
+            ha="center", va="top", fontsize=8, color="#444")
+    ax.text(cx, cy - 0.85,
+            f"bias b = {BIAS:+.3f}",
+            ha="center", va="top", fontsize=6.8, color="#666", style="italic")
+    # emitted p̃ label
+    ax.text(cx + 0.45, cy + 0.18, r"$\tilde p$",
+            ha="left", va="center", fontsize=11, color=C_EDGE, weight="bold")
+    ax.text(cx + 0.45, cy - 0.10, f"= {p_tilde:.3f}",
+            ha="left", va="center", fontsize=7.5, color="#555", family="monospace")
+    return (cx + 0.38, cy)
+
+
+def _DEPRECATED_draw_meta_lr_box(ax, x, y, w, h):
+    """kept for backward compat; not called."""
     rbox(ax, x, y, w, h, fc="#FEF9E7")
     # title bar
     ax.text(x + w/2, y + h - 0.25,
@@ -562,70 +629,41 @@ def fig_a_inference():
     y_mid = 5.5
 
     # Stage 1 · input
-    draw_input_box(ax, 0.2, 4.2, 2.3, 2.6)
-    # arrow
+    draw_input_box(ax, 0.2, 4.1, 2.3, 2.8)
     arrow(ax, 2.5, y_mid, 3.1, y_mid,
-          shape=r"$\mathbb{R}^{12}$",
-          ex="(raw)")
+          shape=r"$\mathbb{R}^{12}$", ex="(raw)")
 
-    # Stage 2 · phi
-    draw_phi_box(ax, 3.1, 2.0, 3.1, 6.8)
-    # arrow
+    # Stage 2 · phi (feature engineering)
+    draw_phi_box(ax, 3.1, 1.8, 3.1, 7.0)
     arrow(ax, 6.2, y_mid, 6.9, y_mid,
-          shape=r"$\mathbb{R}^{41}$",
-          ex="engineered")
+          shape=r"$\mathbb{R}^{41}$", ex="engineered")
 
     # Stage 3 · z-score
     draw_zscore_box(ax, 6.9, 4.85, 1.0, 1.3)
     arrow(ax, 7.9, y_mid, 8.5, y_mid,
-          shape=r"$z\in\mathbb{R}^{41}$",
-          ex="(std.)")
+          shape=r"$z\in\mathbb{R}^{41}$", ex="(std.)")
 
-    # Stage 4 · base ensemble
-    centers = draw_base_ensemble(ax, 8.5, 1.6, 4.1, 7.5, probs=EX_P)
+    # Stage 4 · base ensemble  (5 panels; each ends in a p_k circle)
+    centers = draw_base_ensemble(ax, 8.5, 1.5, 4.1, 7.6, probs=EX_P)
 
-    # arrows from 5 p-circles fan-in to a single stack glyph (tensor view)
-    stack_x = 13.05
-    stack_y = y_mid
-    rbox(ax, stack_x - 0.22, stack_y - 1.10, 0.44, 2.20, fc="#EBF5FB", rad=0.04)
-    for i, p in enumerate(EX_P):
-        yy = stack_y - 1.10 + 0.44 * i + 0.22
-        ax.add_patch(Rectangle((stack_x - 0.18, yy - 0.16),
-                               0.36, 0.32, fc=C_PRIM, ec=C_EDGE, lw=0.5, alpha=0.65))
-        ax.text(stack_x, yy, f"{p:.2f}",
-                ha="center", va="center", fontsize=6.5, color="white", weight="bold")
-    ax.text(stack_x, stack_y + 1.30, r"$\mathbf{p}\in[0,1]^5$",
-            ha="center", va="bottom", fontsize=8.5, color=C_EDGE, weight="bold")
-    # fan-in arrows
-    for (cx, cy) in centers:
-        a = FancyArrowPatch((cx + 0.26, cy), (stack_x - 0.22, cy),
-                            arrowstyle="->", mutation_scale=9,
-                            color="#999", lw=0.8, alpha=0.8)
-        ax.add_patch(a)
+    # Stage 5 · meta sigma node (fan-in of 5 weighted β edges, no stack column)
+    sigma_x, sigma_y = 14.4, y_mid
+    sigma_right = draw_meta_sigma(ax, sigma_x, sigma_y,
+                                  p_centers=centers, p_tilde=EX_PTILDE)
 
-    # arrow from stack → meta
-    arrow(ax, stack_x + 0.22, y_mid, 13.85, y_mid,
-          shape=r"$\mathbf{p}$",
-          ex=None)
+    # arrow σ → isotonic
+    arrow(ax, sigma_right[0] + 0.25, y_mid, 16.55, y_mid,
+          shape=r"$\tilde p$", ex=f"{EX_PTILDE:.3f}")
 
-    # Stage 5 · meta LR (self-contained internal visualization)
-    draw_meta_lr_box(ax, 13.85, 2.5, 2.8, 6.0)
+    # Stage 6 · isotonic calibration
+    draw_isotonic_box(ax, 16.55, 4.10, 1.80, 2.80)
 
-    # arrow to isotonic
-    arrow(ax, 16.65, y_mid, 17.20, y_mid,
-          shape=r"$\tilde p$",
-          ex=f"{EX_PTILDE:.3f}")
-
-    # Stage 6 · isotonic
-    draw_isotonic_box(ax, 17.20, 4.2, 1.50, 2.6)
-
-    # arrow to decision
-    arrow(ax, 18.70, y_mid, 19.05, y_mid,
-          shape=r"$\hat p$",
-          ex=f"{EX_PHAT:.2f}")
+    # arrow isotonic → decision
+    arrow(ax, 18.35, y_mid, 18.85, y_mid,
+          shape=r"$\hat p$", ex=f"{EX_PHAT:.2f}")
 
     # Stage 7 · threshold & decision
-    draw_threshold_box(ax, 19.05, 4.0, 0.95, 3.0, phat=EX_PHAT, tau=TAU)
+    draw_threshold_box(ax, 18.85, 3.90, 1.15, 3.20, phat=EX_PHAT, tau=TAU)
 
     # footer line 1: shape progression
     ax.text(10, 1.15,
@@ -642,10 +680,11 @@ def fig_a_inference():
             f"≥  τ⋆ = {TAU}   →   ŷ = 1  (predicted to resign)",
             ha="center", fontsize=8.5, color="#444")
 
-    fig.savefig(OUT / "fig_A_inference.png", dpi=200, bbox_inches="tight", facecolor=C_BG)
+    fig.savefig(OUT / "fig_A_inference.png", dpi=DPI, bbox_inches="tight", facecolor=C_BG)
     fig.savefig(OUT / "fig_A_inference.pdf",       bbox_inches="tight", facecolor=C_BG)
+    fig.savefig(OUT / "fig_A_inference.svg",       bbox_inches="tight", facecolor=C_BG)
     plt.close(fig)
-    print(f"  wrote {OUT / 'fig_A_inference.png'}")
+    print(f"  wrote {OUT / 'fig_A_inference.png'}  (+ .pdf, .svg)")
 
 
 # ==========================================================================
@@ -889,10 +928,11 @@ def fig_b_training():
             ha="center", fontsize=8.5, color="#555", style="italic",
             bbox=dict(boxstyle="round,pad=0.35", fc="#FFFFFF", ec="#BBB", lw=0.6))
 
-    fig.savefig(OUT / "fig_B_training.png", dpi=200, bbox_inches="tight", facecolor=C_BG)
+    fig.savefig(OUT / "fig_B_training.png", dpi=DPI, bbox_inches="tight", facecolor=C_BG)
     fig.savefig(OUT / "fig_B_training.pdf",       bbox_inches="tight", facecolor=C_BG)
+    fig.savefig(OUT / "fig_B_training.svg",       bbox_inches="tight", facecolor=C_BG)
     plt.close(fig)
-    print(f"  wrote {OUT / 'fig_B_training.png'}")
+    print(f"  wrote {OUT / 'fig_B_training.png'}  (+ .pdf, .svg)")
 
 
 # ==========================================================================
