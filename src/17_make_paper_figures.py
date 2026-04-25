@@ -415,20 +415,23 @@ def draw_meta_sigma(ax, cx, cy, p_centers, p_tilde):
     Returns (right_x, cy) of the σ node so caller can continue the spine.
     """
     keys = ["RF", "NRB", "MT", "SVM", "ET"]
+    key_tex = {"RF": "RF", "NRB": "NRB", "MT": "MT", "SVM": "SVM", "ET": "ET"}
     betas = [BETA[k] for k in keys]
     # draw weighted edges first (so σ sits on top)
-    for (src_x, src_y), bk in zip(p_centers, betas):
+    for (src_x, src_y), bk, k in zip(p_centers, betas, keys):
         color = C_ACC if bk < 0 else C_PRIM
         lw = 0.7 + 4.0 * abs(bk)
         a = FancyArrowPatch((src_x + 0.30, src_y), (cx - 0.38, cy),
                             arrowstyle="->", mutation_scale=11,
                             color=color, lw=lw, alpha=0.85, zorder=2)
         ax.add_patch(a)
-        # β label on edge — positioned 40% toward σ node
+        # β label on edge — explicit "β_key = value" so reader does not
+        # misread the leading sign as an additive operator
         lx = src_x + 0.30 + 0.42 * (cx - 0.38 - src_x - 0.30)
         ly = src_y + 0.42 * (cy - src_y)
-        ax.text(lx, ly + 0.10, f"{bk:+.3f}",
-                ha="center", va="bottom", fontsize=7.2,
+        lab = r"$\beta_{\mathrm{" + key_tex[k] + r"}}=" + f"{bk:+.3f}" + r"$"
+        ax.text(lx, ly + 0.10, lab,
+                ha="center", va="bottom", fontsize=7.0,
                 color=color, weight="bold", zorder=4,
                 bbox=dict(boxstyle="round,pad=0.14",
                           fc="white", ec=color, lw=0.7, alpha=0.95))
