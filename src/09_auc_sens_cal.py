@@ -1,27 +1,21 @@
-"""Phase 7.6 — AUC / Sensitivity significance vs BORF, + calibration.
+"""Phase 7.6 — Bootstrap CI for AUC / Sensitivity + calibration diagnostics.
 
 Reuses Phase 6 calibrated meta probabilities (saved by 08_bal_acc_tune.py) to
-produce the three artefacts the paper needs:
+produce three artefacts for the paper's internal-validation section:
 
-  1. Bootstrap 95% CI for AUC on held-out test, plus one-sided p-value for
-     H0: our AUC ≤ BORF AUC (0.69). 1000 resamples.
+  1. Bootstrap 95% CI for AUC on held-out test (1000 resamples).
   2. Bootstrap 95% CI for Sensitivity at the Bal-Acc-optimal threshold
-     (thr=0.135), plus one-sided p-value for H0: our Sens ≤ BORF Sens (0.681).
-  3. Reliability diagram (10 quantile bins) + Expected Calibration Error (ECE),
-     Maximum Calibration Error (MCE), and Brier score. Also a histogram of
-     predicted probabilities.
-
-External reference (from docs/research-paper-2024-borf-turnover-data.md):
-  BORF (Liu+ 2024):  AUC = 0.69,  Sens = 0.681,  Acc = 0.786
-  NOTE: BORF's Acc=0.786 and AUC=0.69 are questionable together (see
-  memory: project_borf_benchmark_inconsistency.md). We compare against
-  their *reported* numbers regardless, with the caveat documented.
+     (thr=0.135) and the F1-optimal threshold (thr=0.185).
+  3. Reliability diagram (10 quantile bins) + Expected Calibration Error
+     (ECE), Maximum Calibration Error (MCE), and Brier score; plus a
+     histogram of predicted probabilities.
 
 Outputs
 -------
-src/tables/table15_bootstrap_vs_borf.csv
+src/tables/table21_champion_bootstrap_ci.csv
 src/tables/table16_calibration.csv
-src/figures/fig15_forest_vs_borf.png
+src/tables/table16_reliability_bins_test.csv
+src/figures/fig21_champion_ci.png
 src/figures/fig16_calibration_reliability.png
 """
 from __future__ import annotations
@@ -46,8 +40,6 @@ import matplotlib.pyplot as plt
 
 RS = 42
 N_BOOT = 1000
-BORF_AUC = 0.69
-BORF_SENS = 0.681
 
 TARGET = "离职行为"
 INTENT = "离职意向"
@@ -90,33 +82,22 @@ def bootstrap_metric(y, p, metric_fn, n=N_BOOT, seed=RS):
     return np.asarray(vals)
 
 
-def one_sided_p_leq(vals, ref):
-    """P-value for H0: metric ≤ ref (i.e. fraction of bootstrap replicates below ref)."""
-    return float((vals <= ref).mean())
-
-
-# ─── 1. AUC bootstrap + vs BORF ─────────────────────────────────────────
+# ─── 1. AUC bootstrap ───────────────────────────────────────────────────
 print("\n" + "=" * 72)
-print("  1) AUC on test — bootstrap 95% CI + vs BORF 0.69")
+print("  1) AUC on test — bootstrap 95% CI")
 print("=" * 72)
 auc_point = roc_auc_score(y_te, test_cal)
 auc_boot = bootstrap_metric(y_te, test_cal, roc_auc_score)
 auc_ci = (np.percentile(auc_boot, 2.5), np.percentile(auc_boot, 97.5))
-auc_lower_1s = np.percentile(auc_boot, 5)
-p_auc = one_sided_p_leq(auc_boot, BORF_AUC)
 print(f"  point AUC           = {auc_point:.4f}")
-print(f"  95% CI (2-sided)    = [{auc_ci[0]:.4f}, {auc_ci[1]:.4f}]")
-print(f"  5% lower (1-sided)  = {auc_lower_1s:.4f}")
-print(f"  BORF AUC            = {BORF_AUC:.4f}")
-print(f"  p(our AUC ≤ BORF)   = {p_auc:.4f}  ({N_BOOT} boot replicates)")
+print(f"  95% CI              = [{auc_ci[0]:.4f}, {auc_ci[1]:.4f}]")
 
 
-# ─── 2. Sens bootstrap + vs BORF, at Bal-Acc threshold ─────────────────
+# ─── 2. Sens / Spec bootstrap at both thresholds ───────────────────────
 print("\n" + "=" * 72)
-print("  2) Sensitivity on test — bootstrap 95% CI + vs BORF 0.681")
+print("  2) Sensitivity / Specificity on test — bootstrap 95% CI")
 print("=" * 72)
 
-# Use Bal-Acc-optimal threshold from phase 7.5 (found on CV OOF)
 THR_BALACC = 0.135
 THR_F1 = 0.185
 
@@ -125,43 +106,42 @@ for thr_name, thr in [("Bal-Acc-optimal", THR_BALACC), ("F1-optimal", THR_F1)]:
     pred = (test_cal >= thr).astype(int)
     s_point = _sens(y_te, pred)
     sp_point = _spec(y_te, pred)
-    sens_boot = bootstrap_metric(y_te, test_cal, lambda y, p: _sens(y, (p >= thr).astype(int)))
-    spec_boot = bootstrap_metric(y_te, test_cal, lambda y, p: _spec(y, (p >= thr).astype(int)))
-    ci = (np.percentile(sens_boot, 2.5), np.percentile(sens_boot, 97.5))
-    lower_1s = np.percentile(sens_boot, 5)
-    p_val = one_sided_p_leq(sens_boot, BORF_SENS)
+    sens_boot = bootstrap_metric(y_te, test_cal,
+                                 lambda y, p: _sens(y, (p >= thr).astype(int)))
+    spec_boot = bootstrap_metric(y_te, test_cal,
+                                 lambda y, p: _spec(y, (p >= thr).astype(int)))
+    s_ci = (np.percentile(sens_boot, 2.5), np.percentile(sens_boot, 97.5))
+    sp_ci = (np.percentile(spec_boot, 2.5), np.percentile(spec_boot, 97.5))
     print(f"\n  threshold = {thr:.3f}  ({thr_name})")
-    print(f"    Sens  point = {s_point:.4f}  95% CI [{ci[0]:.4f}, {ci[1]:.4f}]  "
-          f"1s-lower={lower_1s:.4f}")
-    print(f"    Spec  point = {sp_point:.4f}")
-    print(f"    BORF Sens   = {BORF_SENS:.4f}  →  p(ours ≤ BORF) = {p_val:.4f}")
+    print(f"    Sens  point = {s_point:.4f}  95% CI [{s_ci[0]:.4f}, {s_ci[1]:.4f}]")
+    print(f"    Spec  point = {sp_point:.4f}  95% CI [{sp_ci[0]:.4f}, {sp_ci[1]:.4f}]")
     sens_rows.append({
         "threshold_name": thr_name, "threshold": thr,
-        "Sens_point": s_point, "Sens_lo": ci[0], "Sens_hi": ci[1],
-        "Sens_1s_lower": lower_1s,
-        "Spec_point": sp_point,
-        "BORF_Sens": BORF_SENS, "p_vs_BORF": p_val,
+        "Sens_point": s_point, "Sens_lo": s_ci[0], "Sens_hi": s_ci[1],
+        "Spec_point": sp_point, "Spec_lo": sp_ci[0], "Spec_hi": sp_ci[1],
     })
 
 
-# ─── write table15 ──────────────────────────────────────────────────────
-rows15 = [{
-    "metric": "AUC", "benchmark": "BORF 2024",
-    "our_point": auc_point, "our_lo": auc_ci[0], "our_hi": auc_ci[1],
-    "our_1s_lower": auc_lower_1s, "BORF": BORF_AUC,
-    "delta": auc_point - BORF_AUC, "p_one_sided": p_auc,
+# ─── write table21 — champion bootstrap CI ─────────────────────────────
+rows21 = [{
+    "metric": "AUC",
+    "point": auc_point, "lo": auc_ci[0], "hi": auc_ci[1],
+    "threshold": np.nan, "threshold_name": "",
 }]
 for r in sens_rows:
-    rows15.append({
-        "metric": f"Sensitivity @ thr={r['threshold']:.3f} ({r['threshold_name']})",
-        "benchmark": "BORF 2024",
-        "our_point": r["Sens_point"], "our_lo": r["Sens_lo"], "our_hi": r["Sens_hi"],
-        "our_1s_lower": r["Sens_1s_lower"], "BORF": BORF_SENS,
-        "delta": r["Sens_point"] - BORF_SENS, "p_one_sided": r["p_vs_BORF"],
+    rows21.append({
+        "metric": "Sensitivity",
+        "point": r["Sens_point"], "lo": r["Sens_lo"], "hi": r["Sens_hi"],
+        "threshold": r["threshold"], "threshold_name": r["threshold_name"],
     })
-df15 = pd.DataFrame(rows15)
-df15.to_csv(OUT_TABLES / "table15_bootstrap_vs_borf.csv", index=False)
-print(f"\nwrote {OUT_TABLES / 'table15_bootstrap_vs_borf.csv'}")
+    rows21.append({
+        "metric": "Specificity",
+        "point": r["Spec_point"], "lo": r["Spec_lo"], "hi": r["Spec_hi"],
+        "threshold": r["threshold"], "threshold_name": r["threshold_name"],
+    })
+df21 = pd.DataFrame(rows21)
+df21.to_csv(OUT_TABLES / "table21_champion_bootstrap_ci.csv", index=False)
+print(f"\nwrote {OUT_TABLES / 'table21_champion_bootstrap_ci.csv'}")
 
 
 # ─── 3. Calibration ─────────────────────────────────────────────────────
@@ -169,10 +149,11 @@ print("\n" + "=" * 72)
 print("  3) Calibration — reliability diagram + ECE/MCE/Brier")
 print("=" * 72)
 
+
 def quantile_bins(p, n_bins=10):
     q = np.quantile(p, np.linspace(0, 1, n_bins + 1))
     q[0] -= 1e-9; q[-1] += 1e-9
-    q = np.unique(q)  # collapse duplicates
+    q = np.unique(q)
     return q
 
 
@@ -201,11 +182,6 @@ print(f"  ECE (quantile-binned, 10 bins) = {ece:.4f}")
 print(f"  MCE                            = {mce:.4f}")
 print(f"  Brier                          = {brier:.4f}")
 
-# Also compute for OOF (on training set) for reference — should look similar
-rel_df_oof, ece_oof, mce_oof = reliability_stats(
-    np.load(OUT_PROC / "train_idx.npy").astype(int) * 0
-    + df[TARGET].values.astype(int)[np.load(OUT_PROC / "train_idx.npy")],
-    oof_cal, n_bins=10)  # ugly but works
 y_tr = df[TARGET].values.astype(int)[np.load(OUT_PROC / "train_idx.npy")]
 rel_df_oof, ece_oof, mce_oof = reliability_stats(y_tr, oof_cal, n_bins=10)
 brier_oof = brier_score_loss(y_tr, oof_cal)
@@ -224,53 +200,48 @@ print(f"\nwrote {OUT_TABLES / 'table16_calibration.csv'}")
 print(f"wrote {OUT_TABLES / 'table16_reliability_bins_test.csv'}")
 
 
-# ─── 4. Forest plot: AUC + Sens vs BORF ─────────────────────────────────
-fig, ax = plt.subplots(1, 1, figsize=(8.5, 4.2))
+# ─── 4. Forest plot: champion AUC + Sens + Spec with CI ────────────────
+fig, ax = plt.subplots(1, 1, figsize=(8.5, 4.6))
 
 items = [
-    ("AUC",
-     auc_point, auc_ci[0], auc_ci[1], BORF_AUC, "BORF AUC = 0.69"),
-    ("Sensitivity\n(thr=0.135, Bal-Acc optimal)",
-     sens_rows[0]["Sens_point"], sens_rows[0]["Sens_lo"], sens_rows[0]["Sens_hi"],
-     BORF_SENS, "BORF Sens = 0.681"),
-    ("Sensitivity\n(thr=0.185, F1 optimal)",
-     sens_rows[1]["Sens_point"], sens_rows[1]["Sens_lo"], sens_rows[1]["Sens_hi"],
-     BORF_SENS, "BORF Sens = 0.681"),
+    ("AUC", auc_point, auc_ci[0], auc_ci[1]),
+    (f"Sensitivity\n(τ={THR_BALACC}, Bal-Acc-opt)",
+     sens_rows[0]["Sens_point"], sens_rows[0]["Sens_lo"], sens_rows[0]["Sens_hi"]),
+    (f"Specificity\n(τ={THR_BALACC}, Bal-Acc-opt)",
+     sens_rows[0]["Spec_point"], sens_rows[0]["Spec_lo"], sens_rows[0]["Spec_hi"]),
+    (f"Sensitivity\n(τ={THR_F1}, F1-opt)",
+     sens_rows[1]["Sens_point"], sens_rows[1]["Sens_lo"], sens_rows[1]["Sens_hi"]),
+    (f"Specificity\n(τ={THR_F1}, F1-opt)",
+     sens_rows[1]["Spec_point"], sens_rows[1]["Spec_lo"], sens_rows[1]["Spec_hi"]),
 ]
 
 y_pos = np.arange(len(items))[::-1]
-for i, (label, pt, lo, hi, borf, _) in enumerate(items):
+for i, (label, pt, lo, hi) in enumerate(items):
     yy = y_pos[i]
     ax.errorbar(pt, yy, xerr=[[pt - lo], [hi - pt]], fmt="o",
-                capsize=4, color="tab:blue", markersize=8, lw=2,
-                label="Ours (point + 95% CI)" if i == 0 else None)
-    ax.scatter([borf], [yy], marker="D", s=80, color="crimson", zorder=5,
-               label="BORF (Liu+ 2024)" if i == 0 else None)
-    ax.text(pt, yy + 0.18, f"{pt:.4f} [{lo:.3f},{hi:.3f}]",
+                capsize=4, color="tab:blue", markersize=8, lw=2)
+    ax.text(pt, yy + 0.18, f"{pt:.4f} [{lo:.3f}, {hi:.3f}]",
             ha="center", fontsize=9, color="tab:blue")
-    ax.text(borf, yy - 0.25, f"{borf:.3f}", ha="center", fontsize=9,
-            color="crimson")
 
 ax.set_yticks(y_pos)
 ax.set_yticklabels([it[0] for it in items], fontsize=10)
-ax.set_xlim(0.60, 0.90)
+ax.set_xlim(0.45, 1.0)
 ax.set_xlabel("Metric value (test set)")
-ax.set_title("Our Phase 6 champion vs BORF (Liu+ 2024)\nPoint estimates with 1000-bootstrap 95% CI",
+ax.set_title("Phase 6 champion — point estimates with 1000-bootstrap 95% CI",
              fontsize=11)
-ax.axvline(0.5, color="gray", ls=":", alpha=0.3)
+ax.axvline(0.5, color="gray", ls=":", alpha=0.4, label="chance (0.5)")
 ax.grid(axis="x", alpha=0.3)
 ax.legend(loc="lower right", fontsize=9)
 plt.tight_layout()
-plt.savefig(OUT_FIGS / "fig15_forest_vs_borf.png", dpi=150, bbox_inches="tight")
+plt.savefig(OUT_FIGS / "fig21_champion_ci.png", dpi=150, bbox_inches="tight")
 plt.close()
-print(f"\nwrote {OUT_FIGS / 'fig15_forest_vs_borf.png'}")
+print(f"\nwrote {OUT_FIGS / 'fig21_champion_ci.png'}")
 
 
 # ─── 5. Calibration reliability diagram ─────────────────────────────────
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4.5),
                                 gridspec_kw={"width_ratios": [1.2, 1]})
 
-# reliability curve (left)
 ax1.plot([0, 1], [0, 1], "--", color="gray", lw=1, label="Perfect calibration")
 ax1.plot(rel_df_oof["mean_pred"], rel_df_oof["mean_true"],
          "o-", color="tab:orange", lw=1.5, ms=6, alpha=0.55,
@@ -287,15 +258,14 @@ ax1.legend(loc="upper left", fontsize=9)
 ax1.grid(alpha=0.3)
 ax1.set_aspect("equal", adjustable="datalim")
 
-# histogram (right)
 ax2.hist(test_cal[y_te == 0], bins=30, alpha=0.55, label="y=0 (留任)",
          color="tab:gray", density=False)
 ax2.hist(test_cal[y_te == 1], bins=30, alpha=0.75, label="y=1 (离职)",
          color="crimson", density=False)
 ax2.axvline(THR_BALACC, color="tab:blue", ls="--",
-            label=f"Bal-Acc thr={THR_BALACC}")
+            label=f"Bal-Acc τ={THR_BALACC}")
 ax2.axvline(THR_F1, color="tab:green", ls=":",
-            label=f"F1 thr={THR_F1}")
+            label=f"F1 τ={THR_F1}")
 ax2.set_xlabel("Predicted probability (calibrated)")
 ax2.set_ylabel("Count")
 ax2.set_title("Predicted-probability distribution (test)", fontsize=11)
@@ -311,16 +281,18 @@ print(f"wrote {OUT_FIGS / 'fig16_calibration_reliability.png'}")
 
 # ─── final summary ─────────────────────────────────────────────────────
 print("\n" + "=" * 72)
-print("  FINAL SUMMARY")
+print("  FINAL SUMMARY — Phase 6 champion bootstrap CI + calibration")
 print("=" * 72)
 print(f"""
-AUC  : ours = {auc_point:.4f}  [CI {auc_ci[0]:.3f}-{auc_ci[1]:.3f}]
-       BORF = {BORF_AUC:.4f}   Δ = +{auc_point-BORF_AUC:.4f}   p(ours ≤ BORF) = {p_auc:.4f}
-Sens (Bal-Acc thr, preferred)
-     : ours = {sens_rows[0]['Sens_point']:.4f}  [CI {sens_rows[0]['Sens_lo']:.3f}-{sens_rows[0]['Sens_hi']:.3f}]
-       BORF = {BORF_SENS:.4f}  Δ = +{sens_rows[0]['Sens_point']-BORF_SENS:.4f}  p(ours ≤ BORF) = {sens_rows[0]['p_vs_BORF']:.4f}
-Sens (F1 thr, legacy)
-     : ours = {sens_rows[1]['Sens_point']:.4f}  [CI {sens_rows[1]['Sens_lo']:.3f}-{sens_rows[1]['Sens_hi']:.3f}]
-       p(ours ≤ BORF) = {sens_rows[1]['p_vs_BORF']:.4f}
+AUC  : {auc_point:.4f}  [CI {auc_ci[0]:.3f}-{auc_ci[1]:.3f}]
+Sens (τ={THR_BALACC}, Bal-Acc)
+     : {sens_rows[0]['Sens_point']:.4f}  [CI {sens_rows[0]['Sens_lo']:.3f}-{sens_rows[0]['Sens_hi']:.3f}]
+Spec (τ={THR_BALACC}, Bal-Acc)
+     : {sens_rows[0]['Spec_point']:.4f}  [CI {sens_rows[0]['Spec_lo']:.3f}-{sens_rows[0]['Spec_hi']:.3f}]
+Sens (τ={THR_F1}, F1)
+     : {sens_rows[1]['Sens_point']:.4f}  [CI {sens_rows[1]['Sens_lo']:.3f}-{sens_rows[1]['Sens_hi']:.3f}]
+Spec (τ={THR_F1}, F1)
+     : {sens_rows[1]['Spec_point']:.4f}  [CI {sens_rows[1]['Spec_lo']:.3f}-{sens_rows[1]['Spec_hi']:.3f}]
 Calibration (TEST): ECE={ece:.4f}  MCE={mce:.4f}  Brier={brier:.4f}
+Calibration (OOF) : ECE={ece_oof:.4f}                Brier={brier_oof:.4f}
 """)

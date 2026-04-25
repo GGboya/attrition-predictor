@@ -1,0 +1,7 @@
+scope,n,pearson_r,spearman_rho,r_lo,r_hi,note
+global_test,1094,0.921814935661541,0.932236041437417,,,
+high_risk_stack>=0.3,160,0.611227428505829,0.6313250042041741,0.5257370111889003,0.6875247534062947,bootstrap 1000 reps
+top_10pct_agreement,109,,,0.5912408759124088,0.7146928701159596,"r_lo=jaccard, r_hi=cohen_kappa"
+top_20pct_agreement,218,,,0.676923076923077,0.7593942440618324,"r_lo=jaccard, r_hi=cohen_kappa"
+top_30pct_agreement,328,,,0.7446808510638298,0.7909953512067758,"r_lo=jaccard, r_hi=cohen_kappa"
+decision_agreement_thr,1094,,,0.8473491773308958,0.6393885921592313,"stack@0.135 vs mtmlp@0.210;  r_lo=agreement, r_hi=kappa"
