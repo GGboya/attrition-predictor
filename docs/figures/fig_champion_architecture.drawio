@@ -1,0 +1,188 @@
+<mxfile host="app.diagrams.net" modified="2026-04-25T00:00:00.000Z" agent="attrition-predictor" version="24.0.0" type="device">
+  <diagram name="Phase-6 Champion Architecture" id="champion-arch">
+    <mxGraphModel dx="1800" dy="1100" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="900" math="1" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="&lt;b&gt;Phase-6 Champion — Model Architecture&lt;/b&gt;&lt;br&gt;&lt;i&gt;Stacking of 5 diverse base learners → L2-logistic meta → isotonic calibration → τ★-thresholded decision&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="900" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- INPUT -->
+        <!-- ============================================================ -->
+        <mxCell id="input" value="&lt;b&gt;x&lt;/b&gt;&lt;br&gt;∈ ℝ^12&lt;br&gt;&lt;i style=&quot;font-size:9px;color:#555&quot;&gt;raw survey features&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2F7;strokeColor=#222222;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="400" width="110" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- FEATURE ENG -->
+        <mxCell id="phi" value="&lt;b&gt;φ(·)&lt;/b&gt;&lt;br&gt;feature engineering&lt;br&gt;&lt;i&gt;ℝ^12 → ℝ^41&lt;/i&gt;&lt;br&gt;&lt;span style=&quot;font-size:8.5px;color:#666&quot;&gt;· Likert cum. dummies (16)&lt;br&gt;· interactions/gaps (8)&lt;br&gt;· log-income, quintile (2)&lt;br&gt;· target-enc. OOF (2)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E3EDD9;strokeColor=#222222;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="220" y="380" width="180" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- z-score -->
+        <mxCell id="zscore" value="&lt;b&gt;z-score&lt;/b&gt;&lt;br&gt;&lt;i style=&quot;font-size:9px&quot;&gt;for MLP, SVM&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F4F4F4;strokeColor=#888888;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="440" y="420" width="110" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Cleanlab v6 (bottom-left, feeds weights to 4 bases) -->
+        <mxCell id="cleanlab" value="&lt;b style=&quot;color:#8b2c2c&quot;&gt;Cleanlab v6 — noise weights&lt;/b&gt;&lt;br&gt;w_i ∈ {0.3, 1.0}&lt;br&gt;&lt;i style=&quot;font-size:9px&quot;&gt;299/4 375 flagged via 5-fold confident learning&lt;/i&gt;&lt;br&gt;&lt;span style=&quot;font-size:9px;color:#5a2020&quot;&gt;→ fed to RF, NR-Boost, SVM, ExtraTrees&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5E3E3;strokeColor=#a33333;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="720" width="340" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- 5 BASE LEARNERS -->
+        <!-- ============================================================ -->
+
+        <!-- RF -->
+        <mxCell id="rf" value="&lt;b&gt;① Random Forest&lt;/b&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;font-size:9px;font-style:italic&quot;&gt;T=400, depth=10, min-leaf=5&lt;/span&gt;&lt;br&gt;class_weight = balanced_subsample&lt;br&gt;&lt;i style=&quot;font-size:8.5px;color:#666&quot;&gt;tree ensemble, majority-vote probability&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBE3D3;strokeColor=#222222;fontSize=10;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="620" y="100" width="380" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="rf_icon" value="&lt;i style=&quot;font-size:9px;color:#666&quot;&gt;(replace this with decision-tree icons from drawio shape library: General &gt; Lean Mapping &gt; tree; or paste the rendered PNG)&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="620" y="155" width="380" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- NR-Boost -->
+        <mxCell id="nrb" value="&lt;b&gt;② NR-Boost (XGBoost)&lt;/b&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;font-size:9px;font-style:italic&quot;&gt;GCE loss q=0.7, 2-stage, drop top-10% losers&lt;/span&gt;&lt;br&gt;n_rounds=400, max_depth=5, eta=0.05&lt;br&gt;&lt;i style=&quot;font-size:8.5px;color:#666&quot;&gt;noise-robust sequential gradient boosting&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CF;strokeColor=#222222;fontSize=10;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="620" y="220" width="380" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- MT-MLP -->
+        <mxCell id="mtmlp" value="&lt;b&gt;③ MT-MLP (Multi-Task)&lt;/b&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;font-size:9px;font-style:italic&quot;&gt;Linear(41→64)→ReLU→Dropout(0.2)→Linear(64→32)→ReLU→Dropout(0.2)&lt;/span&gt;&lt;br&gt;two heads: binary (BCE) + ordinal CORN, joint loss λ=0.7&lt;br&gt;&lt;i style=&quot;font-size:8.5px;color:#666&quot;&gt;seed-avg ×5, patience-25 early stop — only differentiable base&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DFE6F6;strokeColor=#222222;fontSize=10;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="620" y="340" width="380" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- SVM -->
+        <mxCell id="svm" value="&lt;b&gt;④ SVM (RBF kernel)&lt;/b&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;font-size:9px;font-style:italic&quot;&gt;C=1, γ=scale, class_weight=balanced&lt;/span&gt;&lt;br&gt;margin maximiser, Platt-scaled probability&lt;br&gt;&lt;i style=&quot;font-size:8.5px;color:#666&quot;&gt;kernel-space separating hyperplane&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EADAF0;strokeColor=#222222;fontSize=10;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="620" y="460" width="380" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- ExtraTrees -->
+        <mxCell id="et" value="&lt;b&gt;⑤ ExtraTrees&lt;/b&gt;&amp;nbsp;&amp;nbsp;&lt;span style=&quot;font-size:9px;font-style:italic&quot;&gt;T=400, depth=12, min-leaf=3, random split thresholds&lt;/span&gt;&lt;br&gt;class_weight = balanced_subsample&lt;br&gt;&lt;i style=&quot;font-size:8.5px;color:#666&quot;&gt;extremely randomised trees — decorrelation partner to RF&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAEBDA;strokeColor=#222222;fontSize=10;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="620" y="580" width="380" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- 5 probability output nodes -->
+        <mxCell id="p1" value="p₁" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="130" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" value="p₂" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="250" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p3" value="p₃" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="370" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p4" value="p₄" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="490" width="40" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p5" value="p₅" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="610" width="40" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- STACK VECTOR -->
+        <!-- ============================================================ -->
+        <mxCell id="stack_label" value="&lt;b&gt;z ∈ [0,1]^5&lt;/b&gt;&lt;br&gt;&lt;i style=&quot;font-size:9px&quot;&gt;stacked probs&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="180" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="stack" value="p₁&lt;br&gt;p₂&lt;br&gt;p₃&lt;br&gt;p₄&lt;br&gt;p₅" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EAE0F4;strokeColor=#222222;fontSize=11;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="1135" y="230" width="50" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="logit_label" value="logit(·)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="485" width="100" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- META LEARNER -->
+        <!-- ============================================================ -->
+        <mxCell id="meta" value="&lt;b&gt;σ&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:9px&quot;&gt;β^T z + b&lt;/span&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#CFE0E8;strokeColor=#222222;fontSize=16;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="320" width="100" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="meta_label" value="&lt;b style=&quot;color:#1f4b73&quot;&gt;L2-LR meta&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:9px&quot;&gt;C=10, lbfgs&lt;/span&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="270" width="100" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="meta_coef" value="&lt;i&gt;learned β:&lt;/i&gt;&lt;br&gt;β_RF = +0.38&lt;br&gt;β_MT = +0.32&lt;br&gt;β_ET = +0.28&lt;br&gt;β_SVM = −0.05&lt;br&gt;β_NRB = +0.01" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7F7F7;strokeColor=#CCCCCC;fontSize=9;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="440" width="120" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- ISOTONIC CALIBRATION -->
+        <!-- ============================================================ -->
+        <mxCell id="iso" value="&lt;b&gt;ĝ&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:9px&quot;&gt;isotonic (PAV)&lt;/span&gt;&lt;br&gt;&lt;i style=&quot;font-size:9px&quot;&gt;monotone piecewise-constant&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5DBCB;strokeColor=#222222;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="330" width="130" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="iso_note" value="&lt;i style=&quot;font-size:9px&quot;&gt;fit on meta-OOF probs vs y&lt;br&gt;ECE 0.071 → 0.032&lt;/i&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="1410" y="415" width="150" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- OUTPUT -->
+        <!-- ============================================================ -->
+        <mxCell id="phat" value="&lt;b&gt;p̂ ∈ [0,1]&lt;/b&gt;&lt;br&gt;&lt;i style=&quot;font-size:9px&quot;&gt;calibrated probability&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F7EED7;strokeColor=#222222;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1590" y="330" width="90" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="decision" value="&lt;b&gt;ŷ = 𝟙[p̂ ≥ τ★]&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:9px;color:#245a24&quot;&gt;τ★ = 0.135 (Bal-Acc optimal)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCE9DC;strokeColor=#245a24;strokeWidth=2;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1560" y="460" width="150" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- DATA-FLOW ARROWS -->
+        <!-- ============================================================ -->
+        <mxCell id="e_x_phi" style="endArrow=classic;html=1;strokeColor=#222222;strokeWidth=1.5;" edge="1" source="input" target="phi" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_phi_z" style="endArrow=classic;html=1;strokeColor=#666666;strokeWidth=1;" edge="1" source="phi" target="zscore" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- φ → 5 bases (trees/ET use raw) -->
+        <mxCell id="e_phi_rf" style="endArrow=classic;html=1;strokeColor=#777777;" edge="1" source="phi" target="rf" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_phi_nrb" style="endArrow=classic;html=1;strokeColor=#777777;" edge="1" source="phi" target="nrb" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_phi_et" style="endArrow=classic;html=1;strokeColor=#777777;" edge="1" source="phi" target="et" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <!-- z-score → MT-MLP, SVM -->
+        <mxCell id="e_z_mtmlp" style="endArrow=classic;html=1;strokeColor=#777777;" edge="1" source="zscore" target="mtmlp" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_z_svm" style="endArrow=classic;html=1;strokeColor=#777777;" edge="1" source="zscore" target="svm" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- bases → probability nodes -->
+        <mxCell id="e_rf_p1" style="endArrow=classic;html=1;strokeColor=#555555;" edge="1" source="rf" target="p1" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_nrb_p2" style="endArrow=classic;html=1;strokeColor=#555555;" edge="1" source="nrb" target="p2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_mt_p3" style="endArrow=classic;html=1;strokeColor=#555555;" edge="1" source="mtmlp" target="p3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_svm_p4" style="endArrow=classic;html=1;strokeColor=#555555;" edge="1" source="svm" target="p4" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_et_p5" style="endArrow=classic;html=1;strokeColor=#555555;" edge="1" source="et" target="p5" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- p_i → stack -->
+        <mxCell id="e_p1_s" style="endArrow=classic;html=1;strokeColor=#555555;" edge="1" source="p1" target="stack" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_p2_s" style="endArrow=classic;html=1;strokeColor=#555555;" edge="1" source="p2" target="stack" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_p3_s" style="endArrow=classic;html=1;strokeColor=#555555;" edge="1" source="p3" target="stack" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_p4_s" style="endArrow=classic;html=1;strokeColor=#555555;" edge="1" source="p4" target="stack" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_p5_s" style="endArrow=classic;html=1;strokeColor=#555555;" edge="1" source="p5" target="stack" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- stack → meta → iso → phat → decision -->
+        <mxCell id="e_s_meta" style="endArrow=classic;html=1;strokeColor=#222222;strokeWidth=1.5;" edge="1" source="stack" target="meta" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_meta_iso" style="endArrow=classic;html=1;strokeColor=#222222;strokeWidth=1.5;" edge="1" source="meta" target="iso" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_iso_phat" style="endArrow=classic;html=1;strokeColor=#222222;strokeWidth=1.5;" edge="1" source="iso" target="phat" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_phat_dec" style="endArrow=classic;html=1;strokeColor=#245a24;strokeWidth=1.5;" edge="1" source="phat" target="decision" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- Cleanlab → 4 weight-supporting bases (dashed red) -->
+        <mxCell id="e_cl_rf" style="endArrow=classic;html=1;strokeColor=#a33333;dashed=1;dashPattern=6 4;" edge="1" source="cleanlab" target="rf" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_cl_nrb" style="endArrow=classic;html=1;strokeColor=#a33333;dashed=1;dashPattern=6 4;" edge="1" source="cleanlab" target="nrb" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_cl_svm" style="endArrow=classic;html=1;strokeColor=#a33333;dashed=1;dashPattern=6 4;" edge="1" source="cleanlab" target="svm" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+        <mxCell id="e_cl_et" style="endArrow=classic;html=1;strokeColor=#a33333;dashed=1;dashPattern=6 4;" edge="1" source="cleanlab" target="et" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+        <!-- ============================================================ -->
+        <!-- Annotations / note -->
+        <!-- ============================================================ -->
+        <mxCell id="note_split" value="&lt;b&gt;Data split (seed=42)&lt;/b&gt;&lt;br&gt;• Train: N = 4 375  (14.5% pos)&lt;br&gt;• Test:  N = 1 094  (frozen)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#CCCCCC;dashed=1;fontSize=9;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="120" width="220" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="legend" value="&lt;b&gt;Legend&lt;/b&gt;&lt;br&gt;• solid arrow  = data flow (forward)&lt;br&gt;• dashed red   = Cleanlab sample weights&lt;br&gt;• circle p_i   = base prob (out of fold on train, full-train refit on test)&lt;br&gt;• σ node       = logistic meta-learner&lt;br&gt;• isotonic ĝ  = PAV monotone calibration map" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FAFAFA;strokeColor=#999999;fontSize=9;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="560" width="400" height="110" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
