@@ -1,0 +1,214 @@
+% !TEX program = xelatex
+% ============================================================
+%  main_zh.tex — 第四章「方法」中文稿（与 main.tex 对应）
+%  图片与 main.tex 相同，放在本文件同级目录
+%
+%  编译器（二选一，按你日志「仍在用 pdfLaTeX」说明）:
+%  A) 推荐：主菜单/设置里把 Compiler 改为 XeLaTeX（与上一行 magic comment 一致）
+%  B) 若只能 pdfLaTeX：本稿已用 fontset=ubuntu（文鼎，避免 fandol 报 unavailable
+%     后回退到 unisong9e 崩掉）。需完整 TeX Live 中文包，如仍缺字执行:
+%        tlmgr install arphic-ttf cjk
+%     或安装发行版的 texlive-lang-chinese / collection-langcjk
+% ============================================================
+\documentclass[UTF8,11pt,a4paper,fontset=ubuntu]{ctexart}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb,amsthm,bm}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{siunitx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{cite}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{xcolor}
+\usepackage{microtype}
+
+\graphicspath{{./}}
+
+\newcommand{\Pof}{\mathbf{P}^{\mathrm{OOF}}}
+\newcommand{\logit}{\operatorname{logit}}
+\newcommand{\RR}{\mathbb{R}}
+\newcommand{\EE}{\mathbb{E}}
+\newcommand{\ptilde}{\tilde p}
+\newcommand{\phat}{\hat p}
+\newcommand{\taustar}{\tau^{\star}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\title{可执行的员工离职预测系统：\\
+面向应届生的噪声鲁棒堆叠与硬约束反事实干预}
+\author{Yuhang Song \and 合作者 \\ \small{\today}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{方法}
+\label{sec:methods}
+
+\subsection{概述}
+\label{sec:methods-overview}
+
+我们将整个系统视为两个紧耦合的组成部分：
+（i）一条\textbf{推理流程}，将单条员工原始记录映射为二值风险预警；
+（ii）一套\textbf{训练协议}，估计推理阶段所需的全部参数。
+图~\ref{fig:inference} 展示前者，图~\ref{fig:training} 展示后者。两图由同一特征映射
+$\varphi(\cdot)$、同一样本权向量 $\mathbf{w}$，以及同一组冻结的导出物
+$\{\text{base}_k,\bm{\beta},b,g,\taustar\}$ 相联系；该集合中每个对象在推理图中
+有唯一使用位置，在训练流程中也有唯一产生位置。
+
+\subsection{特征变换 \texorpdfstring{$\varphi$}{phi}}
+\label{sec:methods-phi}
+
+设 $\mathbf{x}\in\RR^{12}$ 为十二条整数编码调研变量的原始输入（三列人口学特征、
+四列工作特征、五列工作情境特征）。我们施加确定性变换
+$\varphi:\RR^{12}\to\RR^{41}$，将六类互补信息拼接为一条特征向量：
+（1）在有序题项上构造十二条累积型 Likert 哑变量
+$\mathbf{1}\{x_j\ge c\}$，$c\in\{2,3,4,5\}$；
+（2）十二条原始数值特征；
+（3）六条人工构造的二元交互（例如收入 $\times$ 压力、满意度 $\times$ 匹配等）；
+（4）八条「期望--现实」落差特征；
+（5）对收入作 $\log(\text{income})$ 与 $\text{income}^2$ 两项变换；
+（6）单条经 K 折目标编码的复合分数。
+树模型直接使用 $\varphi(\mathbf{x})$；基于距离与梯度的学习器在 $\varphi(\mathbf{x})$
+上额外做 $z$ 分标准化
+$\tilde{\varphi}(\mathbf{x}) = (\varphi(\mathbf{x}) - \bm{\mu}_{\mathrm{train}})/
+\bm{\sigma}_{\mathrm{train}}$，
+其中 $\bm{\mu}_{\mathrm{train}},\bm{\sigma}_{\mathrm{train}}$ 仅在有标签的训练折上估计，以避免信息泄漏。
+
+\subsection{推理流程}
+\label{sec:methods-inference}
+
+推理流程（图~\ref{fig:inference}）在概念上可分成六个阶段。
+给定输入 $\mathbf{x}$，五个基学习器
+$k\in\{\mathrm{RF}, \mathrm{NRB}, \mathrm{MT}, \mathrm{SVM}, \mathrm{ET}\}$
+分别输出概率 $p_k = f_k(\varphi(\mathbf{x}))\in[0,1]$。
+一级（Level-1）L2 正则化逻辑回归元学习器在 logit 空间上融合五个基模型输出：
+\begin{equation}
+\label{eq:meta}
+\ptilde \;=\; \sigma\!\left(\sum_{k=1}^{5}\beta_k\,\logit(p_k) + b\right),
+\qquad
+\sigma(z)=\frac{1}{1+e^{-z}}.
+\end{equation}
+将元模型输出 $\ptilde$ 经\textbf{后验}等距校准（isotonic）映射
+$g:[0,1]\to[0,1]$（用 Pool-Adjacent-Violators 算法学习得到的单调非减阶梯函数），
+得到已校准风险分数
+\[
+\phat \;=\; g(\ptilde).
+\]
+再使用在验证准则下选取的平衡准确率最优阈值 $\taustar$ 将 $\phat$ 二值化：
+\[
+\hat y \;=\; \mathbf{1}\{\phat \ge \taustar\}, \qquad \taustar = 0.135.
+\]
+上述右端量均在部署时固定；\ref{sec:methods-training}~节说明其估计方式。
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig_A_inference.pdf}
+  \caption{\textbf{所提出堆叠集成的推理流程。}
+  原始输入 $\mathbf{x}\in\RR^{12}$ 经确定性映射
+  $\varphi:\RR^{12}\!\to\!\RR^{41}$ 后分为两支：树模型（RF、NR-Boost、ET）直接使用
+  $\varphi(\mathbf{x})$，距离/梯度类学习器（SVM-RBF、MT-MLP）使用其 $z$ 分标准化
+  版本。每个基学习器 $k$ 输出概率 $p_k\in[0,1]$（彩色圆点）。L2 正则逻辑回归
+  元学习器在 logit 空间上融合五路输出（式~\ref{eq:meta}）；边颜色表示 $\beta_k$ 的符号
+ （蓝为正、红为负），边宽表示 $|\beta_k|$。$\ptilde$ 经 isotonic 映射 $g$ 得到
+  已校准风险 $\phat$，再由平衡准确率意义下的最优阈值 $\taustar=0.135$ 得到二值预警
+  $\hat y$。各箭头旁标注张量形状；圈注数值示例展示一名高风险员工的完整前向计算轨迹。}
+  \label{fig:inference}
+\end{figure}
+
+\subsection{训练协议}
+\label{sec:methods-training}
+
+训练协议（图~\ref{fig:training}）说明各部署产物的估计方式，分四个阶段。
+
+\paragraph{阶段 1：Cleanlab-v6 样本权。}
+为缓解自陈式离职调研中普遍存在的标签噪声，我们在独立交叉验证回路上拟合
+噪声鲁棒探针分类器，为每个训练样本计算自置信（self-confidence）分数；按分数升序
+将\textbf{末位 10\%} 标为可能错标，赋降权 $w_i=0.3$，其余 90\% 保持 $w_i=1.0$。
+得到二元权向量 $\mathbf{w}\in\RR^{N}$（$N=4{,}375$）并落盘，供后续各步复用。
+
+\paragraph{阶段 2：5 折 OOF 训练。}
+对每个基学习器 $f_k$，在层化 5 折交叉验证中通过原生 \texttt{sample\_weight}
+接口注入 $\mathbf{w}$；每折在四个入折上训练、在一个出折上预测，将五折出折
+预测拼接，得到无泄漏的 OOF 概率矩阵
+\[
+\Pof \;=\; \bigl[\,p_k^{\mathrm{OOF}}(\mathbf{x}_i)\,\bigr]_{i,k}
+\;\in\; [0,1]^{N\times 5}.
+\]
+该矩阵即元学习器的训练输入；由构造，$p_k^{\mathrm{OOF}}(\mathbf{x}_i)$ 所对应的
+基模型在拟合时未见过样本 $i$，从而避免朴素堆叠中常见的一级（Level-1）泄漏。
+
+\paragraph{阶段 3：元模型拟合与 isotonic 校准。}
+对 $\Pof$ 的每一列作 logit 变换，得到元特征
+$\mathbf{l}_i = \logit(\mathbf{p}_i^{\mathrm{OOF}})\in\RR^{5}$，
+并最小化带 L2 惩罚的加权交叉熵以拟合 L2 正则逻辑回归：
+\begin{equation}
+\label{eq:meta-objective}
+\{\hat{\bm\beta},\hat b\}
+\;=\;
+\argmin_{\bm\beta,\,b}\;
+-\sum_{i=1}^{N} w_i
+\bigl[\,y_i\ln\hat p_i + (1-y_i)\ln(1-\hat p_i)\,\bigr]
+\;+\;\frac{1}{2C}\|\bm\beta\|_2^{2},
+\end{equation}
+其中 $\hat p_i = \sigma(\bm\beta^{\!\top}\mathbf{l}_i + b)$，$C=10$。目标为凸，可用
+LBFGS 求解。随后在各基学习器上\textbf{以全量训练集}（带 $\mathbf{w}$）重拟合
+得到可部署模型，并计算其 OOF 模式下的元输出 $\ptilde_{\mathrm{oof},i}$。在
+$(\ptilde_{\mathrm{oof},i}, y_i)$ 上再拟合 isotonic 校准 $g$（Pool-Adjacent-Violators）以保证单调。决策阈值取为
+\[
+\taustar \;=\; \argmax_{\tau\in(0,1)}\;
+\mathrm{BalAcc}\!\bigl(\{\phat_{\mathrm{oof},i}\}, y\,;\tau\bigr),
+\qquad \taustar = 0.135,
+\]
+其中 $\phat_{\mathrm{oof},i} = g(\ptilde_{\mathrm{oof},i})$。此后 $g$、$\taustar$ 与
+$(\hat{\bm\beta},\hat b)$ 均\textbf{冻结}，不再在测试集上重估。
+
+\paragraph{阶段 4：部署产物包。}
+最终导出：（a）五个重拟合后的基学习器 $\{f_k\}_{k=1}^{5}$；（b）元系数
+$(\hat{\bm\beta},\hat b)$；（c）isotonic 映射 $g$；（d）阈值 $\taustar$。它们恰为
+图~\ref{fig:inference} 推理各节点所消费的四类对象。
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig_B_training.pdf}
+  \caption{\textbf{冠军模型的训练协议。}
+  \textbf{阶段 1（Cleanlab 权）。} 噪声鲁棒探针在独立 CV 上计算逐样本自置信；末位
+  10\% 设 $w_i=0.3$，其余 $w_i=1.0$，得到 $\mathbf{w}$。
+  \textbf{阶段 2（5 折 OOF）。} 五个基学习器在带 $\mathbf{w}$ 的层化 5 折中训练，拼接
+  出折预测得到无泄漏的 OOF 矩阵 $\Pof\in[0,1]^{N\times 5}$。
+  \textbf{阶段 3（元模型 + Isotonic）。} 对 $\Pof$ 作 logit 后送入 L2 正则逻辑回归，
+  最小化式~\ref{eq:meta-objective}（黄框，LBFGS）得到 $(\hat{\bm\beta},\hat b)$；各
+  基模型再在全量训练集上重拟合；在 $(\ptilde_{\mathrm{oof}}, y)$ 上拟合 isotonic
+  $g$；在 OOF 预测上按平衡准确率选取 $\taustar$。
+  \textbf{阶段 4（冻结产物）。} 导出物 $\{f_k,\hat{\bm\beta},\hat b,g,\taustar\}$ 与
+  图~\ref{fig:inference} 推理时所用完全一致。}
+  \label{fig:training}
+\end{figure}
+
+\subsection{与图~\ref{fig:inference}、图~\ref{fig:training} 的对应关系}
+\label{sec:methods-bridge}
+
+图~\ref{fig:inference} 与图~\ref{fig:training} 是同一套模型的两个互补视角：
+前者在参数已固定的前提下，展示单条输入如何经冻结网络得到二值预警；后者则揭示
+可学习量——五类基学习器内部参数、元系数 $(\bm\beta,b)$、isotonic 映射 $g$ 与阈值
+$\taustar$——如何从数据中间接估计。两图共享（i）同一 41 维特征空间 $\varphi$；
+（ii）同一样本权 $\mathbf{w}$；（iii）同一组基学习器超参数；（iv）同一 5 折划分。
+图~\ref{fig:training} 阶段~4 产出的每个对象在图~\ref{fig:inference} 中有且仅有一个
+使用位置：$(\bm\beta,b)$ 仅出现在 meta-$\sigma$ 节点，$g$ 仅出现在 isotonic 节点，
+$\taustar$ 仅出现在阈值节点。这种训练--推理一一对应使复现可归结为单一产物包
+完整性校验，且阶段~2 的 OOF 构造保证元学习器在训练时见到的基模型概率分布
+与部署时一致。
+
+\subsection{硬约束反事实（HRCF）干预}
+\label{sec:methods-hrcf}
+% TODO — 见 docs/paper/06_methods_hrcf.md
+\textit{（待写）在强可行动约束下基于投影的反事实生成；代价函数；top-$k$ 方案枚举；
+与软约束型 DiCE 变体的比较。}
+
+\end{document}

@@ -410,20 +410,40 @@ plt.savefig(OUT_FIGS / "fig17_baselines_roc.png", dpi=150, bbox_inches="tight")
 plt.close()
 print(f"wrote {OUT_FIGS / 'fig17_baselines_roc.png'}")
 
-fig, ax = plt.subplots(figsize=(9, 5.5))
+fig, axes = plt.subplots(1, 2, figsize=(15, 5.8), sharey=True)
 labels = [name for name, *_ in BASELINES] + ["Phase 6 Champion"]
-aucs, los, his = [], [], []
+
+# gather predictions + Bal-Acc thresholds (from panel_df rows where criterion=="Bal-Acc")
+panel_df_ba = pd.DataFrame(panel_rows)
+panel_df_ba = panel_df_ba[panel_df_ba["threshold_criterion"] == "Bal-Acc"].set_index("baseline")
+
+aucs, auc_los, auc_his = [], [], []
+bas,  ba_los,  ba_his  = [], [], []
 for name, *_ in BASELINES:
     test_cal = results[name]["test_cal"]
     aucs.append(roc_auc_score(y_te, test_cal))
     lo, hi = bootstrap_ci(y_te, test_cal, roc_auc_score)
-    los.append(lo); his.append(hi)
+    auc_los.append(lo); auc_his.append(hi)
+    thr_ba = float(panel_df_ba.loc[name, "threshold"])
+    ba_metric = lambda y, p, t=thr_ba: balanced_accuracy_score(y, (p >= t).astype(int))
+    bas.append(balanced_accuracy_score(y_te, (test_cal >= thr_ba).astype(int)))
+    blo, bhi = bootstrap_ci(y_te, test_cal, ba_metric)
+    ba_los.append(blo); ba_his.append(bhi)
+
 aucs.append(roc_auc_score(y_te, champion_test))
 lo_ch, hi_ch = bootstrap_ci(y_te, champion_test, roc_auc_score)
-los.append(lo_ch); his.append(hi_ch)
+auc_los.append(lo_ch); auc_his.append(hi_ch)
+thr_ba_ch_val = float(panel_df_ba.loc["Phase6-Champion", "threshold"])
+ba_metric_ch = lambda y, p, t=thr_ba_ch_val: balanced_accuracy_score(y, (p >= t).astype(int))
+bas.append(balanced_accuracy_score(y_te, (champion_test >= thr_ba_ch_val).astype(int)))
+blo_ch, bhi_ch = bootstrap_ci(y_te, champion_test, ba_metric_ch)
+ba_los.append(blo_ch); ba_his.append(bhi_ch)
 
 y_pos = np.arange(len(labels))[::-1]
-for i, (lab, a, lo, hi) in enumerate(zip(labels, aucs, los, his)):
+
+# ---- left panel: AUC ----
+ax = axes[0]
+for i, (lab, a, lo, hi) in enumerate(zip(labels, aucs, auc_los, auc_his)):
     is_champ = (lab == "Phase 6 Champion")
     color = "crimson" if is_champ else "tab:blue"
     ax.errorbar(a, y_pos[i], xerr=[[a - lo], [hi - a]], fmt="o",
@@ -434,8 +454,26 @@ ax.axvline(aucs[-1], color="crimson", ls=":", alpha=0.4)
 ax.set_yticks(y_pos); ax.set_yticklabels(labels, fontsize=10)
 ax.set_xlim(0.60, 0.86)
 ax.set_xlabel("Test AUC (calibrated)")
-ax.set_title("Baseline family vs Phase 6 champion — 1000-bootstrap 95% CI", fontsize=11)
+ax.set_title("(a) AUC", fontsize=11, loc="left")
 ax.grid(axis="x", alpha=0.3)
+
+# ---- right panel: Bal-Acc @ BalAcc-optimal threshold ----
+ax2 = axes[1]
+for i, (lab, v, lo, hi) in enumerate(zip(labels, bas, ba_los, ba_his)):
+    is_champ = (lab == "Phase 6 Champion")
+    color = "crimson" if is_champ else "tab:green"
+    ax2.errorbar(v, y_pos[i], xerr=[[v - lo], [hi - v]], fmt="s",
+                 capsize=4, color=color, markersize=9 if is_champ else 7, lw=2)
+    ax2.text(v, y_pos[i] + 0.22, f"{v:.4f} [{lo:.3f},{hi:.3f}]",
+             ha="center", fontsize=8.5, color=color)
+ax2.axvline(bas[-1], color="crimson", ls=":", alpha=0.4)
+ax2.set_xlim(0.58, 0.78)
+ax2.set_xlabel(r"Test Bal-Acc @ $\tau^\star_{\mathrm{BalAcc}}$ (train-OOF searched)")
+ax2.set_title("(b) Balanced Accuracy", fontsize=11, loc="left")
+ax2.grid(axis="x", alpha=0.3)
+
+fig.suptitle("Baseline family vs Phase 6 champion — 1000-bootstrap 95% CI",
+             fontsize=12.5, y=1.02)
 plt.tight_layout()
 plt.savefig(OUT_FIGS / "fig17_baselines_forest.png", dpi=150, bbox_inches="tight")
 plt.close()

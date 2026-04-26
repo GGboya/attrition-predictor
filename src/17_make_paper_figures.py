@@ -814,24 +814,36 @@ def draw_refit_panel(ax, x, y, w, h):
 
     # step A: collect OOF matrix (N × 5)
     ax_x = x + 0.4
-    ax_y = y + h - 1.4
-    rbox(ax, ax_x, ax_y - 0.4, 1.8, 0.80, fc="#FFFFFF")
-    ax.text(ax_x + 0.9, ax_y + 0.15, r"$\mathbf{P}^{\mathrm{OOF}}\in\mathbb{R}^{N\times 5}$",
-            ha="center", va="center", fontsize=9, weight="bold")
-    ax.text(ax_x + 0.9, ax_y - 0.18, r"logit transform",
-            ha="center", va="center", fontsize=7, style="italic", color="#666")
+    ax_y = y + h - 1.15
+    rbox(ax, ax_x, ax_y - 0.3, 1.8, 0.60, fc="#FFFFFF")
+    ax.text(ax_x + 0.9, ax_y + 0.12, r"$\mathbf{P}^{\mathrm{OOF}}\in\mathbb{R}^{N\times 5}$",
+            ha="center", va="center", fontsize=8.5, weight="bold")
+    ax.text(ax_x + 0.9, ax_y - 0.15, r"logit transform",
+            ha="center", va="center", fontsize=6.5, style="italic", color="#666")
 
     # arrow to meta fit
     arrow(ax, ax_x + 1.8, ax_y, ax_x + 2.4, ax_y, shape="fit")
-    rbox(ax, ax_x + 2.4, ax_y - 0.4, 1.9, 0.80, fc="#FFFFFF")
-    ax.text(ax_x + 3.35, ax_y + 0.15, "L2-LR (C=10)",
-            ha="center", va="center", fontsize=9, weight="bold")
-    ax.text(ax_x + 3.35, ax_y - 0.18, r"learn $\{\beta_k,b\}$",
-            ha="center", va="center", fontsize=7, color="#666")
+    rbox(ax, ax_x + 2.4, ax_y - 0.3, 1.9, 0.60, fc="#FFFFFF")
+    ax.text(ax_x + 3.35, ax_y + 0.12, "L2-LR (C=10)",
+            ha="center", va="center", fontsize=8.5, weight="bold")
+    ax.text(ax_x + 3.35, ax_y - 0.15, r"learn $\{\beta_k,b\}$",
+            ha="center", va="center", fontsize=6.5, color="#666")
+
+    # objective function — written out below row 1 so reader sees what is being minimized
+    obj_y = ax_y - 0.75
+    rbox(ax, x + 0.25, obj_y - 0.22, w - 0.5, 0.44, fc="#FFFDE7", ec="#E0C060", lw=0.8)
+    ax.text(x + w/2, obj_y + 0.05,
+            r"$\{\hat{\boldsymbol{\beta}},\hat b\}=\arg\min\ "
+            r"-\sum_{i} w_i\!\left[y_i\ln\hat p_i+(1{-}y_i)\ln(1{-}\hat p_i)\right]"
+            r"+\frac{1}{2C}\|\boldsymbol{\beta}\|_2^{2}$",
+            ha="center", va="center", fontsize=6.8, color="#333")
+    ax.text(x + w/2, obj_y - 0.14,
+            r"$\hat p_i=\sigma(\boldsymbol{\beta}^{\!\top}\mathbf{l}_i+b),\ \mathbf{l}_i=\mathrm{logit}(\mathbf{p}_i^{\mathrm{OOF}})\in\mathbb{R}^{5}$  (LBFGS)",
+            ha="center", va="center", fontsize=6.0, color="#777", style="italic")
 
     # step B: p_tilde training predictions
     bx2 = x + 0.4
-    by2 = ax_y - 1.15
+    by2 = ax_y - 1.35
     rbox(ax, bx2, by2 - 0.35, 1.8, 0.70, fc="#FFFFFF")
     ax.text(bx2 + 0.9, by2 - 0.00, r"$\tilde p_{\mathrm{train}}$",
             ha="center", va="center", fontsize=10, weight="bold")

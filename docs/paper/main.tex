@@ -1,0 +1,272 @@
+% ============================================================
+%  main.tex — Methodology only (Ch.4 extract for Overleaf, etc.)
+%  Compile: pdfLaTeX or XeLaTeX
+% ============================================================
+\documentclass[11pt,a4paper]{article}
+
+% ---- core packages ----
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb,amsthm,bm}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{siunitx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{cite}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{xcolor}
+\usepackage{microtype}
+
+% ---- figure path (place PDFs/PNGs next to this .tex, e.g. on Overleaf) ----
+\graphicspath{{./}}
+
+% ---- custom macros ----
+\newcommand{\Pof}{\mathbf{P}^{\mathrm{OOF}}}
+\newcommand{\logit}{\operatorname{logit}}
+\newcommand{\RR}{\mathbb{R}}
+\newcommand{\EE}{\mathbb{E}}
+\newcommand{\ptilde}{\tilde p}
+\newcommand{\phat}{\hat p}
+\newcommand{\taustar}{\tau^{\star}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+% ---- title block ----
+\title{An Actionable Attrition Prediction System:\\
+Noise-Robust Stacking and Hard-Constrained Counterfactual\\
+Interventions for New-Graduate Employees}
+\author{Yuhang Song \and Collaborators \\ \small{\today}}
+\date{}
+
+% ============================================================
+\begin{document}
+\maketitle
+
+% ============================================================
+\section{Methodology}
+\label{sec:methods}
+
+% ------------------------------------------------------------
+\subsection{Overview}
+\label{sec:methods-overview}
+
+We view the system as two tightly coupled artifacts: (i) an
+\emph{inference pipeline} that maps a raw employee record to a binary
+risk alert, and (ii) a \emph{training protocol} that estimates every
+parameter consumed at inference time. Figure~\ref{fig:inference}
+illustrates the former and Figure~\ref{fig:training} the latter. The two
+figures are linked by a shared feature space $\varphi(\cdot)$, a shared
+sample-weight vector $\mathbf{w}$, and a shared bundle of frozen
+artifacts $\{\text{base}_k,\bm{\beta},b,g,\taustar\}$; every object in the
+bundle has exactly one consumption site in the inference pipeline and
+exactly one production site in the training protocol.
+
+% ------------------------------------------------------------
+\subsection{Feature Transform \texorpdfstring{$\varphi$}{phi}}
+\label{sec:methods-phi}
+
+Let $\mathbf{x}\in\RR^{12}$ denote the raw input of twelve integer-coded
+survey variables (three demographic, four job-characteristic, five
+work-environment). We apply a deterministic
+transform $\varphi:\RR^{12}\to\RR^{41}$ that concatenates six
+complementary subsets: (1) twelve cumulative Likert dummies
+$\mathbf{1}\{x_j\ge c\}$ for $c\in\{2,3,4,5\}$ on the ordinal items;
+(2) the twelve raw numerics; (3) six hand-crafted binary interactions
+(e.g.\ income $\times$ pressure, satisfaction $\times$ match);
+(4) eight expectation--realization gap features;
+(5) two income transforms $\log(\text{income})$ and $\text{income}^2$;
+and (6) a single KFold-target-encoded composite score. Tree-based learners
+consume $\varphi(\mathbf{x})$ directly; distance- and gradient-based
+learners additionally undergo z-score standardization
+$\tilde{\varphi}(\mathbf{x}) = (\varphi(\mathbf{x}) - \bm{\mu}_{\mathrm{train}})/
+\bm{\sigma}_{\mathrm{train}}$, where
+$\bm{\mu}_{\mathrm{train}},\bm{\sigma}_{\mathrm{train}}$ are estimated
+exclusively on training-fold samples to prevent leakage.
+
+% ------------------------------------------------------------
+\subsection{Inference Pipeline}
+\label{sec:methods-inference}
+
+The inference pipeline (Figure~\ref{fig:inference}) proceeds in six stages.
+Given an input $\mathbf{x}$, each of the five base learners
+$k\in\{\mathrm{RF}, \mathrm{NRB}, \mathrm{MT}, \mathrm{SVM}, \mathrm{ET}\}$
+emits a probability $p_k = f_k(\varphi(\mathbf{x}))\in[0,1]$. A Level-1
+L2-regularized logistic regression meta-learner aggregates the five base
+probabilities in logit-space:
+\begin{equation}
+\label{eq:meta}
+\ptilde \;=\; \sigma\!\left(\sum_{k=1}^{5}\beta_k\,\logit(p_k) + b\right),
+\qquad
+\sigma(z)=\frac{1}{1+e^{-z}}.
+\end{equation}
+The meta output $\ptilde$ is passed through a post-hoc isotonic calibration
+map $g:[0,1]\to[0,1]$ (a monotone non-decreasing step function learned
+via the Pool-Adjacent-Violators algorithm) to obtain the calibrated risk
+score
+\[
+\phat \;=\; g(\ptilde).
+\]
+A final balanced-accuracy-optimal threshold $\taustar$ converts $\phat$
+into a binary alert:
+\[
+\hat y \;=\; \mathbf{1}\{\phat \ge \taustar\}, \qquad \taustar = 0.135.
+\]
+All quantities on the right-hand sides are frozen at deployment;
+Section~\ref{sec:methods-training} describes how each is estimated.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig_A_inference.pdf}
+  \caption{\textbf{Inference pipeline of the proposed stacking ensemble.}
+  A raw input $\mathbf{x}\in\RR^{12}$ is transformed by the deterministic
+  map $\varphi:\RR^{12}\!\to\!\RR^{41}$ and distributed along two
+  branches: tree-based learners (RF, NR-Boost, ET) consume
+  $\varphi(\mathbf{x})$ directly, whereas distance/gradient-based learners
+  (SVM-RBF, MT-MLP) consume its z-score--standardized version. Each base
+  learner $k$ emits a probability $p_k\in[0,1]$ (colored circles). An
+  L2-regularized logistic regression meta-learner aggregates the five
+  probabilities in logit-space (Equation~\ref{eq:meta}); edge colors
+  encode the sign of $\beta_k$ (blue $>\!0$, red $<\!0$) and edge widths
+  encode $|\beta_k|$. The meta output $\ptilde$ is mapped to a calibrated
+  risk score $\phat$ by an isotonic regressor $g$, and a
+  balanced-accuracy-optimal threshold $\taustar=0.135$ produces the
+  binary alert $\hat y$. Tensor shapes are annotated on every arrow;
+  circled values illustrate the full trace of an exemplar high-risk
+  employee.}
+  \label{fig:inference}
+\end{figure}
+
+% ------------------------------------------------------------
+\subsection{Training Protocol}
+\label{sec:methods-training}
+
+The training protocol (Figure~\ref{fig:training}) specifies how each
+deployment artifact is estimated and decomposes into four stages.
+
+\paragraph{Stage 1: Cleanlab-v6 sample weighting.}
+To mitigate label noise that is endemic to self-reported turnover
+surveys, we compute a self-confidence score for each training sample
+using a noise-robust probe classifier fit on an independent
+cross-validation loop. Samples in the bottom 10\% (ranked ascending) are
+flagged as potentially mis-labeled and assigned a down-weight
+$w_i = 0.3$; the remaining 90\% retain $w_i = 1.0$. The resulting binary
+weight vector $\mathbf{w}\in\RR^{N}$ with $N=4{,}375$ is cached on disk
+and consumed by every downstream training step.
+
+\paragraph{Stage 2: 5-fold Out-of-Fold (OOF) training.}
+For each base learner $f_k$, we run 5-fold stratified cross-validation
+with $\mathbf{w}$ injected via the native \texttt{sample\_weight} API.
+For each fold, the learner is trained on the four hold-in folds and
+evaluated on the held-out fold; the concatenation of all held-out
+predictions across the five folds yields a leakage-free OOF probability
+matrix
+\[
+\Pof \;=\; \bigl[\,p_k^{\mathrm{OOF}}(\mathbf{x}_i)\,\bigr]_{i,k}
+\;\in\; [0,1]^{N\times 5}.
+\]
+This matrix is the training input for the meta-learner; by construction,
+each entry $p_k^{\mathrm{OOF}}(\mathbf{x}_i)$ is produced by a base
+learner that has not seen sample $i$ during its fit, eliminating the
+Level-1 leakage that plagues naive stacking implementations.
+
+\paragraph{Stage 3: Meta fit and isotonic calibration.}
+We logit-transform each column of $\Pof$ to obtain meta-features
+$\mathbf{l}_i = \logit(\mathbf{p}_i^{\mathrm{OOF}})\in\RR^{5}$ and fit
+the L2-regularized logistic regression by minimizing the weighted
+cross-entropy with L2 penalty:
+\begin{equation}
+\label{eq:meta-objective}
+\{\hat{\bm\beta},\hat b\}
+\;=\;
+\argmin_{\bm\beta,\,b}\;
+-\sum_{i=1}^{N} w_i
+\bigl[\,y_i\ln\hat p_i + (1-y_i)\ln(1-\hat p_i)\,\bigr]
+\;+\;\frac{1}{2C}\|\bm\beta\|_2^{2},
+\end{equation}
+where $\hat p_i = \sigma(\bm\beta^{\!\top}\mathbf{l}_i + b)$ and
+$C=10$. The objective is convex and solved by LBFGS. We then re-fit
+every base learner on the \emph{full} training set (with $\mathbf{w}$)
+to obtain the deployment models and collect their OOF-mode meta outputs
+$\ptilde_{\mathrm{oof},i}$. The isotonic calibrator $g$ is fit on
+$(\ptilde_{\mathrm{oof},i}, y_i)$ via the Pool-Adjacent-Violators
+algorithm to enforce monotonicity. Finally, the decision threshold is
+selected as
+\[
+\taustar \;=\; \argmax_{\tau\in(0,1)}\;
+\mathrm{BalAcc}\!\bigl(\{\phat_{\mathrm{oof},i}\}, y\,;\tau\bigr),
+\qquad \taustar = 0.135,
+\]
+where $\phat_{\mathrm{oof},i} = g(\ptilde_{\mathrm{oof},i})$. All three
+quantities $g$, $\taustar$, and the bundle $\{\hat{\bm\beta},\hat b\}$
+are \emph{frozen} after this step and never re-estimated on test data.
+
+\paragraph{Stage 4: Deployment artifact bundle.}
+The final exported objects are: (a) the five refit base learners
+$\{f_k\}_{k=1}^{5}$, (b) the meta coefficient tuple $(\hat{\bm\beta},\hat b)$,
+(c) the isotonic map $g$, and (d) the threshold $\taustar$. These are
+precisely the four categories of objects consumed at inference
+(Figure~\ref{fig:inference}).
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig_B_training.pdf}
+  \caption{\textbf{Training protocol of the champion model.}
+  \textbf{Stage 1 (Cleanlab weighting).} A noise-robust probe classifier
+  computes per-sample self-confidence on an independent CV loop; the
+  bottom 10\% of samples are assigned $w_i=0.3$, the remainder
+  $w_i=1.0$, producing the binary weight vector $\mathbf{w}$.
+  \textbf{Stage 2 (5-fold OOF).} Each of the five base learners is
+  trained under stratified 5-fold CV with $\mathbf{w}$ injected; the
+  concatenated held-out predictions form the leakage-free OOF matrix
+  $\Pof\in[0,1]^{N\times 5}$.
+  \textbf{Stage 3 (Meta fit + Isotonic).} $\Pof$ is logit-transformed
+  and passed to an L2-regularized logistic regression that minimizes
+  Equation~\ref{eq:meta-objective} (yellow box, solved by LBFGS) to
+  recover $(\hat{\bm\beta},\hat b)$; each base learner is then refit on
+  the full training set; an isotonic calibrator $g$ is fit on
+  $(\ptilde_{\mathrm{oof}}, y)$ via Pool-Adjacent-Violators; the
+  decision threshold $\taustar$ is selected by maximizing balanced
+  accuracy on the OOF predictions.
+  \textbf{Stage 4 (Frozen artifacts).} The exported bundle
+  $\{f_k,\hat{\bm\beta},\hat b,g,\taustar\}$ is exactly the set of
+  objects consumed at inference time in Figure~\ref{fig:inference}.}
+  \label{fig:training}
+\end{figure}
+
+% ------------------------------------------------------------
+\subsection{Bridging Figures~\ref{fig:inference} and~\ref{fig:training}}
+\label{sec:methods-bridge}
+
+Figures~\ref{fig:inference} and~\ref{fig:training} depict two
+complementary views of the same model system. Figure~\ref{fig:inference}
+fixes all parameters and shows how an input traverses the frozen
+pipeline to produce a binary alert; Figure~\ref{fig:training} reveals
+how all learnable components -- the five base learners' internal
+weights, the meta coefficients $(\bm\beta,b)$, the isotonic map $g$, and
+the threshold $\taustar$ -- are jointly estimated from training data.
+The two figures share (i)~the same 41-dimensional feature space
+$\varphi$, (ii)~the same sample-weight vector $\mathbf{w}$,
+(iii)~the same base-learner hyperparameters, and (iv)~the same 5-fold
+split. Every artifact produced by Stage~4 of Figure~\ref{fig:training}
+has exactly one consumption site in Figure~\ref{fig:inference}:
+$(\bm\beta,b)$ is consumed only at the meta-$\sigma$ node, $g$ only at
+the isotonic node, and $\taustar$ only at the threshold node. This
+bijective training--inference correspondence implies that model
+reproducibility reduces to the integrity of a single artifact bundle
+hash, and that the OOF construction in Stage~2 guarantees the
+distribution of base probabilities seen by the meta-learner at training
+time coincides with that seen at deployment time.
+
+% ------------------------------------------------------------
+\subsection{Hard-Constrained Counterfactual (HRCF) Intervention}
+\label{sec:methods-hrcf}
+% TODO — use docs/paper/06_methods_hrcf.md as source
+\textit{Placeholder. Projection-based counterfactual generation under
+hard actionability constraints; cost function; top-$k$ menu
+enumeration; comparison with soft-constrained DiCE variants.}
+
+\end{document}

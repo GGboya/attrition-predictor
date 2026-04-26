@@ -376,7 +376,12 @@ print(f"\n  meta CV AUC = {auc_oof:.4f}   test AUC = {auc_test:.4f}")
 # Persist calibrated probs for reuse
 np.save(OUT_PROC / "phase6_meta_oof_probs.npy", oof_cal)
 np.save(OUT_PROC / "phase6_meta_test_probs.npy", test_cal)
-print(f"  saved  data/processed/phase6_meta_{{oof,test}}_probs.npy")
+# Also cache pre-calibration meta probs so calibrator experiments can
+# swap calibrators without rerunning the full stack pipeline.
+np.save(OUT_PROC / "phase6_meta_oof_raw.npy", oof_meta)
+np.save(OUT_PROC / "phase6_meta_test_raw.npy", test_meta)
+print(f"  saved  data/processed/phase6_meta_{{oof,test}}_probs.npy (isotonic)")
+print(f"  saved  data/processed/phase6_meta_{{oof,test}}_raw.npy (pre-calibration)")
 
 
 # ─── threshold sweep: argmax on CV OOF, evaluate on test ────────────────
